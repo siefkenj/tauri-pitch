@@ -1,0 +1,44 @@
+.freq-note,
+.freq-hz {
+  display: block;
+}
+.freq-note {
+  font-size: 24px;
+}
+.freq-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  margin: auto;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+.freq-pointer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.freq-note-label {
+  display: inline-block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 20px;
+}
+.freq-octave {
+  font-size: 0.6em;
+  vertical-align: sub;
+}
+.freq-surround {
+  position: relative;
+  overflow: hidden;
+  min-width: 300px;
+  min-height: 300px;
+  width: 100%;
+  height: 100%;
+}
