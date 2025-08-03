@@ -69,3 +69,10 @@ jobs:
                   releaseDraft: true
                   prerelease: false
                   args: ${{ matrix.args }}
+
+            - name: Upload artifacts
+              if: always() # This ensures that artifacts are uploaded even if the build fails.
+              uses: actions/upload-artifact@v4
+              with:
+                  name: tauri-artifacts-${{ matrix.platform }}
+                  path: src-tauri/target/release/bundle/*
