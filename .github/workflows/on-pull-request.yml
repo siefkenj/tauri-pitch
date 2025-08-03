@@ -48,6 +48,11 @@ jobs:
               with:
                   workspaces: "./src-tauri -> target"
 
+            - uses: jetli/wasm-pack-action@v0.4.0
+              with:
+                  # Optional version of wasm-pack to install(eg. 'v0.9.1', 'latest')
+                  version: "latest"
+
             - name: Install frontend dependencies
               # If you don't have `beforeBuildCommand` configured you may want to build your frontend here too.
               run: |-
