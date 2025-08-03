@@ -10,6 +10,7 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc && vite build",
+        "build:wasm": "cd pitch-detection-wasm && wasm-pack build --target web",
         "preview": "vite preview",
         "tauri": "env WEBKIT_DISABLE_DMABUF_RENDERER=1 tauri"
     },
