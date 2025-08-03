@@ -4,6 +4,7 @@ import { _coreReducerActions, selfSelector } from "./slice";
 
 import PitchWorker from "../../../worker?worker";
 import { PitchWorker as PitchWorkerClass } from "../../../worker";
+import { invoke } from "@tauri-apps/api/core";
 
 type PitchSetup = {
     analyser?: AnalyserNode;
@@ -16,7 +17,7 @@ type PitchSetup = {
  * The worker instance. The app only uses one worker instance; it is reused for all processing.
  */
 let worker: Comlink.Remote<PitchWorkerClass> | null = null;
-let stream: MediaStream | null = null;
+let stream: MediaStream | "tauri" | null = null;
 let activeTimeouts: ReturnType<typeof setInterval>[] = [];
 
 export const coreThunks = {
@@ -44,11 +45,27 @@ export const coreThunks = {
                     )
                 );
             } catch (error) {
-                console.error("Error accessing audio devices:", error);
-                stream = null;
-                dispatch(_coreReducerActions.setActiveAudioDevice(null));
-                dispatch(_coreReducerActions._setInErrorState(true));
-                throw error;
+                if (
+                    error instanceof Error &&
+                    error.name === "NotAllowedError"
+                ) {
+                    // Use `tauri` as a fallback if we cannot get access to the microphone.
+                    console.log(
+                        "Using Tauri as a fallback for audio processing"
+                    );
+                    stream = "tauri";
+                    dispatch(
+                        _coreReducerActions.setActiveAudioDevice(
+                            "Backend (Default Input Device)"
+                        )
+                    );
+                } else {
+                    console.error("Error accessing audio devices:", error);
+                    stream = null;
+                    dispatch(_coreReducerActions.setActiveAudioDevice(null));
+                    dispatch(_coreReducerActions._setInErrorState(true));
+                    throw error;
+                }
             }
         }
     ),
@@ -133,37 +150,88 @@ export const coreThunks = {
                 );
             }
 
-            let pitchSetup: PitchSetup = {
-                buffer: new Float32Array(windowSize),
-                audioContext: new AudioContext(),
-            };
+            function grabSampleFactory(): () => Promise<{
+                sample_rate: number;
+                data: Float32Array;
+            }> {
+                if (!stream) {
+                    throw new Error("Audio stream is not initialized");
+                }
+                if (stream === "tauri") {
+                    // We use the Tauri API to grab audio samples.
+                    return async () => {
+                        const samp = (await invoke("record_sample", {
+                            interval: 50,
+                        })) as [number, number[]];
 
-            // Create an AudioNode from the stream.
-            const mediaStreamSource =
-                pitchSetup.audioContext.createMediaStreamSource(stream);
+                        let rawData = samp[1];
+                        if (rawData.length > windowSize) {
+                            rawData = rawData.slice(0, windowSize);
+                        } else if (rawData.length < windowSize) {
+                            // If the data is shorter than the window size, pad it with zeros.
+                            const padding = new Array(
+                                windowSize - rawData.length
+                            ).fill(0);
+                            rawData = rawData.concat(padding);
+                        }
 
-            // Connect it to the destination.
-            pitchSetup.analyser = pitchSetup.audioContext.createAnalyser();
-            pitchSetup.analyser.fftSize = windowSize;
-            mediaStreamSource.connect(pitchSetup.analyser);
+                        const ret = {
+                            sample_rate: samp[0],
+                            data: new Float32Array(rawData),
+                        };
+                        return ret;
+                    };
+                } else {
+                    // We use the browser's MediaStream API to grab audio samples.
+                    let pitchSetup: PitchSetup = {
+                        buffer: new Float32Array(windowSize),
+                        audioContext: new AudioContext(),
+                    };
+
+                    // Create an AudioNode from the stream.
+                    const mediaStreamSource =
+                        pitchSetup.audioContext.createMediaStreamSource(stream);
+
+                    // Connect it to the destination.
+                    pitchSetup.analyser =
+                        pitchSetup.audioContext.createAnalyser();
+                    pitchSetup.analyser.fftSize = windowSize;
+                    mediaStreamSource.connect(pitchSetup.analyser);
+
+                    return async () => {
+                        if (!pitchSetup.analyser) {
+                            console.warn(
+                                "Trying to update the pitch, but missing an analyser"
+                            );
+                            return {
+                                sample_rate: pitchSetup.audioContext.sampleRate,
+                                data: pitchSetup.buffer,
+                            };
+                        }
+                        const { analyser, buffer, audioContext } = pitchSetup;
+                        analyser.getFloatTimeDomainData(buffer);
+                        const ret = {
+                            sample_rate: audioContext.sampleRate,
+                            data: buffer,
+                        };
+                        return ret;
+                    };
+                }
+            }
+
+            const grabSample = grabSampleFactory();
 
             async function updatePitch() {
                 if (!worker) {
                     console.warn("Worker is not initialized");
                     return;
                 }
-                if (!pitchSetup.analyser) {
-                    console.warn(
-                        "Trying to update the pitch, but missing an analyser"
-                    );
-                    return;
-                }
-                const { analyser, buffer, audioContext } = pitchSetup;
-                analyser.getFloatTimeDomainData(buffer);
+
+                const { sample_rate, data } = await grabSample();
 
                 const res = await worker.getPitch(
-                    buffer,
-                    audioContext.sampleRate,
+                    data,
+                    sample_rate,
                     powerThreshold,
                     clarityThreshold
                 );
@@ -177,7 +245,7 @@ export const coreThunks = {
 
             await updatePitch();
 
-            const timeoutId = window.setInterval(updatePitch, 100);
+            const timeoutId = window.setInterval(updatePitch, 65);
             activeTimeouts.push(timeoutId);
         }
     ),
@@ -187,9 +255,11 @@ export const coreThunks = {
     stopCollectingPitches: createLoggingAsyncThunk(
         "core/stopCollectingPitches",
         async (_: void, { dispatch }) => {
-            if (stream) {
+            if (stream && stream !== "tauri") {
                 stream.getTracks().forEach((track) => track.stop());
                 stream = null;
+            } else {
+                // If the `stream` type is "tauri", there is no need to clean up.
             }
             activeTimeouts.forEach((timeoutId) => clearInterval(timeoutId));
             activeTimeouts.length = 0;

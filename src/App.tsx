@@ -14,6 +14,7 @@ import {
 } from "./state/redux-slices/core";
 import { Button, Divider, HTMLSelect } from "@blueprintjs/core";
 import { CircleChart } from "./components/circle-chart/circle-chat";
+import { startRecording, stopRecording } from "tauri-plugin-mic-recorder-api";
 
 function App() {
     const [greetMsg, setGreetMsg] = useState("");
@@ -121,7 +122,7 @@ function App() {
                 </button>
                 <p>{greetMsg}</p> */}
             </div>
-            <div className="footer">Foot</div>
+            <div className="footer"></div>
         </main>
     );
 }

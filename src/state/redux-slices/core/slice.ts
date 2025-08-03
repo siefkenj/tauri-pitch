@@ -24,7 +24,7 @@ export interface CoreState {
 // Define the initial state using that type
 const initialState: CoreState = {
     pitchDetectionAlgorithm: "mcleod",
-    windowSize: 1024,
+    windowSize: 2048,
     clarityThreshold: 0.5,
     powerThreshold: 0.015,
     currentPitch: { pitch: 0, clarity: 0 },
