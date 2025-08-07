@@ -1,10 +1,8 @@
-use clap::Parser;
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Stream,
 };
 use std::{
-    fmt::Debug,
     marker::{Send, Sync},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -34,26 +32,6 @@ impl State {
 }
 static STATE: LazyLock<Arc<Mutex<State>>> = LazyLock::new(|| Arc::new(Mutex::new(State::new())));
 
-#[derive(Parser, Debug)]
-struct Opt {
-    /// The audio device to use
-    #[arg(short, long, default_value_t = String::from("default"))]
-    device: String,
-
-    /// Use the JACK host
-    #[cfg(all(
-        any(
-            target_os = "linux",
-            target_os = "dragonfly",
-            target_os = "freebsd",
-            target_os = "netbsd"
-        ),
-        feature = "jack"
-    ))]
-    #[arg(short, long)]
-    #[allow(dead_code)]
-    jack: bool,
-}
 /// Record an audio sample from the default input device for `interval` milliseconds.
 ///
 /// Returns a tuple `(sample_rate, audio_data)`.

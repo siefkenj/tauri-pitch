@@ -22,7 +22,9 @@
         "@tauri-apps/plugin-opener": "^2",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
-        "tauri-plugin-mic-recorder-api": "^2.0.0"
+        "react-router": "^7.7.1",
+        "y-websocket": "^3.0.0",
+        "yjs": "^13.6.27"
     },
     "devDependencies": {
         "@tauri-apps/cli": "^2",

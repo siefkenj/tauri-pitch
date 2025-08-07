@@ -9,120 +9,130 @@ import { useAppDispatch, useAppSelector } from "./state/hooks";
 import { coreThunks } from "./state/redux-slices/core/thunks";
 import {
     activeAudioDeviceSelector,
+    appRuntimeSelector,
     clarityThresholdSelector,
     currentPitchSelector,
+    hostingAddressSelector,
 } from "./state/redux-slices/core";
 import { Button, Divider, HTMLSelect } from "@blueprintjs/core";
 import { CircleChart } from "./components/circle-chart/circle-chat";
-import { startRecording, stopRecording } from "tauri-plugin-mic-recorder-api";
+import { SocketTest } from "./socket";
+import { Route, Routes } from "react-router";
+import { NavTabStrip } from "./components/nav-tabs";
+import { Karaoke } from "./components/karaoke";
+import { karaokeActions } from "./state/redux-slices/karaoke";
 
 function App() {
-    const [greetMsg, setGreetMsg] = useState("");
-    const [name, setName] = useState("");
     const dispatch = useAppDispatch();
     const activeAudioDevice = useAppSelector(activeAudioDeviceSelector);
     const currentPitch = useAppSelector(currentPitchSelector);
     const clarityThreshold = useAppSelector(clarityThresholdSelector);
+    const appRuntime = useAppSelector(appRuntimeSelector);
+    const hostingAddress = useAppSelector(hostingAddressSelector);
 
     useEffect(() => {
         // Initialize the worker when the app starts
         dispatch(coreThunks.initWorker());
+        dispatch(karaokeActions.initKaraoke())
+
+        return () => {
+            // Cleanup if necessary
+            dispatch(coreThunks.stopCollectingPitches());
+            dispatch(karaokeActions.cleanupKaraoke());
+        }
     }, []);
 
-    async function greet() {
-        // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-        setGreetMsg(await invoke("greet", { name }));
-    }
 
     return (
         <main className="container">
-            <div className="header">
-                <Button variant="minimal" icon="menu">
-                    Settings
-                </Button>
-                <Divider />
-                <label>
-                    Device:{" "}
-                    <HTMLSelect>
-                        <option value="current-device">
-                            {activeAudioDevice || "Not Recording"}
-                        </option>
-                        {/* <option value="mcleod">McLeod</option> */}
-                    </HTMLSelect>
-                </label>
-                <Button
-                    className="record-button"
-                    icon={!activeAudioDevice ? "play" : "stop"}
-                    onClick={async () => {
-                        if (!activeAudioDevice) {
-                            console.log("Starting audio processing");
-                            await dispatch(coreThunks.initAudioDevice());
-                            await dispatch(
-                                coreThunks.setPitchDetectionAlgorithm(
-                                    "autocorrelation"
-                                )
-                            );
-                            await dispatch(coreThunks.collectPitches());
-                        } else {
-                            console.log("Stopping audio processing");
-                            await dispatch(coreThunks.stopCollectingPitches());
-                        }
-                    }}
-                >
-                    {activeAudioDevice ? "Stop" : "Start"}
-                </Button>
+            <div className="body-surround">
+                <Routes>
+                    <Route path="" element={<NavTabStrip />}>
+                        <Route
+                            index
+                            path="circle-chart"
+                            element={
+                                <>
+                                    <div className="header">
+                                        <label>
+                                            Device:{" "}
+                                            <HTMLSelect>
+                                                <option value="current-device">
+                                                    {activeAudioDevice ||
+                                                        "Not Recording"}
+                                                </option>
+                                                {/* <option value="mcleod">McLeod</option> */}
+                                            </HTMLSelect>
+                                        </label>
+                                        <Button
+                                            className="record-button"
+                                            icon={
+                                                !activeAudioDevice
+                                                    ? "play"
+                                                    : "stop"
+                                            }
+                                            onClick={async () => {
+                                                if (!activeAudioDevice) {
+                                                    console.log(
+                                                        "Starting audio processing"
+                                                    );
+                                                    await dispatch(
+                                                        coreThunks.initAudioDevice()
+                                                    );
+                                                    await dispatch(
+                                                        coreThunks.setPitchDetectionAlgorithm(
+                                                            "autocorrelation"
+                                                        )
+                                                    );
+                                                    await dispatch(
+                                                        coreThunks.collectPitches()
+                                                    );
+                                                } else {
+                                                    console.log(
+                                                        "Stopping audio processing"
+                                                    );
+                                                    await dispatch(
+                                                        coreThunks.stopCollectingPitches()
+                                                    );
+                                                }
+                                            }}
+                                        >
+                                            {activeAudioDevice
+                                                ? "Stop"
+                                                : "Start"}
+                                        </Button>
+                                    </div>
+                                    <div className="body">
+                                        {/* <div>{JSON.stringify(currentPitch, null, 2)}</div> */}
+                                        <div className="display-container">
+                                            <CircleChart
+                                                freq={
+                                                    currentPitch.clarity >=
+                                                    clarityThreshold
+                                                        ? currentPitch.pitch ||
+                                                          440
+                                                        : null
+                                                }
+                                                clarity={
+                                                    currentPitch.clarity >=
+                                                    clarityThreshold
+                                                        ? currentPitch.clarity
+                                                        : null
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            }
+                        />
+                        <Route path="karaoke" element={<Karaoke />} />
+                    </Route>
+                </Routes>
             </div>
-            <div className="body">
-                {/* <div>{JSON.stringify(currentPitch, null, 2)}</div> */}
-                <div className="display-container">
-                    <CircleChart
-                        freq={
-                            currentPitch.clarity >= clarityThreshold
-                                ? currentPitch.pitch || 440
-                                : null
-                        }
-                        clarity={
-                            currentPitch.clarity >= clarityThreshold
-                                ? currentPitch.clarity
-                                : null
-                        }
-                    />
-                </div>
-                {/* <p>Click on the Tauri, Vite, and React logos to learn more!!</p>
-
-                <form
-                    className="row"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        greet();
-                    }}
-                >
-                    <input
-                        id="greet-input"
-                        onChange={(e) => setName(e.currentTarget.value)}
-                        placeholder="Enter a name..."
-                    />
-                    <button type="submit">Greet</button>
-                </form>
-                <button
-                    onClick={async () => {
-                        console.log("Starting to collect pitches");
-                        await dispatch(coreThunks.initAudioDevice());
-                        await dispatch(
-                            coreThunks.setPitchDetectionAlgorithm(
-                                "autocorrelation"
-                            )
-                        );
-                        const pitch = await dispatch(
-                            coreThunks.collectPitches()
-                        );
-                    }}
-                >
-                    Get Pitch
-                </button>
-                <p>{greetMsg}</p> */}
+            <div className="footer">
+                <SocketTest />
+                <div>Address: {hostingAddress} (Runtime: {appRuntime})</div>
             </div>
-            <div className="footer"></div>
         </main>
     );
 }

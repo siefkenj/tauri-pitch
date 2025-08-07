@@ -1,5 +1,6 @@
 import { configureStore } from "@reduxjs/toolkit";
 import { coreReducer } from "./redux-slices/core";
+import { karaokeReducer } from "./redux-slices/karaoke";
 
 /**
  * This Redux store keeps the state/update state for the whole app.
@@ -7,6 +8,7 @@ import { coreReducer } from "./redux-slices/core";
 export const store = configureStore({
     reducer: {
         core: coreReducer,
+        karaoke: karaokeReducer,
     },
 });
 

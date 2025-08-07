@@ -5,6 +5,7 @@
     "dictionaries": [],
     "words": [],
     "ignoreWords": [
+        "bcast",
         "blueprintjs",
         "dtolnay",
         "libappindicator",

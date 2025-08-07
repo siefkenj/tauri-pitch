@@ -7,6 +7,9 @@ body,
     width: 100%;
     display: flex;
 }
+* {
+    box-sizing: border-box;
+}
 .container {
     display: flex;
     flex-grow: 1;
@@ -28,7 +31,50 @@ body,
     .record-button {
         margin-left: auto;
     }
+    background-color: #edeff2;
 }
+.body-surround {
+    display: flex;
+    flex-grow: 1;
+    overflow: hidden;
+
+    .nav-tab-panel {
+        display: flex;
+        flex-direction: column;
+        flex-basis: 0;
+        flex-grow: 1;
+        margin: 0;
+        overflow: hidden;
+    }
+    .nav-tab-strip {
+        padding: 4px;
+        background-color: #edeff2;
+    }
+}
+
+.karaoke-tabs {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    & [role="tablist"] {
+        background-color: #edeff2;
+        padding: 4px;
+    }
+    & [role="tabpanel"] {
+        flex-direction: column;
+        flex-grow: 1;
+        overflow: hidden;
+    }
+}
+.karaoke-playlist {
+    overflow: auto;
+    height: 100%;
+}
+
+div[role="tablist"] {
+    user-select: none;
+}
+
 .body {
     flex-grow: 1;
     overflow: hidden;

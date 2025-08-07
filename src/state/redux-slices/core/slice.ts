@@ -3,6 +3,14 @@ import type { PayloadAction } from "@reduxjs/toolkit";
 import type { RootState } from "../../store";
 
 export interface CoreState {
+    /**
+     * Whether the app is the (unique) instance running in the Tauri window or a remote instance.
+     */
+    appRuntime: "tauri" | "remote";
+    /**
+     * The IP address/port of the hosting server. `undefined` if we're not hosting.
+     */
+    hostingAddress?: string;
     pitchDetectionAlgorithm: "autocorrelation" | "mcleod";
     windowSize: number;
     /**
@@ -23,6 +31,9 @@ export interface CoreState {
 
 // Define the initial state using that type
 const initialState: CoreState = {
+    appRuntime:
+        // @ts-ignore
+        typeof window.__TAURI_INTERNALS__ !== "undefined" ? "tauri" : "remote",
     pitchDetectionAlgorithm: "mcleod",
     windowSize: 2048,
     clarityThreshold: 0.5,
@@ -69,6 +80,9 @@ const coreSlice = createSlice({
         _setInErrorState: (state, action: PayloadAction<boolean>) => {
             state.inErrorState = action.payload;
         },
+        _setHostingAddress: (state, action: PayloadAction<string | undefined>) => {
+            state.hostingAddress = action.payload;
+        }
     },
 });
 
@@ -89,3 +103,9 @@ export const currentPitchSelector = (state: RootState) =>
 
 export const clarityThresholdSelector = (state: RootState) =>
     selfSelector(state).clarityThreshold;
+
+export const appRuntimeSelector = (state: RootState) =>
+    selfSelector(state).appRuntime;
+
+export const hostingAddressSelector = (state: RootState) =>
+    selfSelector(state).hostingAddress;
