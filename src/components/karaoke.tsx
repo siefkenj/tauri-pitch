@@ -1,14 +1,20 @@
 import {
     Button,
     ButtonGroup,
+    Callout,
     Menu,
     MenuDivider,
     MenuItem,
+    Navbar,
+    NavbarDivider,
+    NavbarGroup,
+    NavbarHeading,
     Tab,
     Tabs,
 } from "@blueprintjs/core";
 import { useAppDispatch, useAppSelector } from "../state/hooks";
 import {
+    SongInfo,
     currentlyPlayingSelector,
     karaokeActions,
     songQueueSelector,
@@ -17,16 +23,62 @@ import {
 export function Karaoke() {
     return (
         <>
-            <Tabs defaultSelectedTabId={"playlist"} className="karaoke-tabs">
-                <Tab
-                    id="view"
-                    panel={<div>Playing Karaoke</div>}
-                    title="View"
-                />
+            <Tabs defaultSelectedTabId={"view"} className="karaoke-tabs">
+                <Tab id="view" panel={<ViewSong />} title="View" />
                 <Tab id="playlist" panel={<Playlist />} title="Playlist" />
                 <Tab id="settings" panel={<div>Submit</div>} title="Submit" />
             </Tabs>
         </>
+    );
+}
+
+function ViewSong() {
+    const currentlyPlaying = useAppSelector(currentlyPlayingSelector);
+    const songQueue = useAppSelector(songQueueSelector);
+    const nextSong: SongInfo | undefined = songQueue[0];
+    return (
+        <div className="karaoke-view">
+            <div className="karaoke-video">
+                {currentlyPlaying || true ? (
+                    <video
+                        src={`http://localhost:8000/video/`}
+                        controls
+                        autoPlay
+                    />
+                ) : (
+                    <div>No Video</div>
+                )}
+            </div>
+            <Navbar>
+                <NavbarGroup>
+                    {nextSong ? (
+                        <>
+                            {currentlyPlaying && (
+                                <>
+                                    <NavbarHeading>
+                                        Playing:{" "}
+                                        <b>
+                                            {currentlyPlaying.artist} -{" "}
+                                            {currentlyPlaying.title}
+                                        </b>
+                                    </NavbarHeading>
+                                    <NavbarDivider />
+                                </>
+                            )}
+                            <NavbarHeading>
+                                Next: {nextSong.artist} - {nextSong.title}
+                            </NavbarHeading>
+                            <NavbarDivider />
+                            <Button icon="arrow-right">
+                                Skip to Next Song
+                            </Button>
+                        </>
+                    ) : (
+                        "No Next Song"
+                    )}
+                </NavbarGroup>
+            </Navbar>
+        </div>
     );
 }
 

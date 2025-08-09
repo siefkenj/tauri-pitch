@@ -4,6 +4,7 @@ use port_selector::Selector;
 use tauri::Manager;
 
 mod audio_capture;
+mod fetch_youtube;
 mod get_server_address;
 mod localhost_server;
 mod yrs_server;
@@ -61,12 +62,19 @@ pub fn run() {
                 Ok(())
             }
         })
-        .plugin(localhost_server::Builder::new(app_data.http_port).host("0.0.0.0").build())
+        .plugin(
+            localhost_server::Builder::new(app_data.http_port)
+                .host("0.0.0.0")
+                .build(),
+        )
         //.plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![audio_capture::record_sample])
+        //       .invoke_handler(tauri::generate_handler![audio_capture::record_sample])
         .invoke_handler(tauri::generate_handler![
-            get_server_address::get_server_address
+            get_server_address::get_server_address,
+            audio_capture::record_sample,
+            fetch_youtube::fetch_youtube
         ])
+        //.invoke_handler(tauri::generate_handler![fetch_youtube::fetch_youtube])
         // .setup(move |app| {
         //     let resolver = app.asset_resolver();
         //     dbg!(&resolver);

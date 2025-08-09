@@ -3,14 +3,14 @@ use std::{
     sync::Mutex,
 };
 
-use tauri::{AppHandle, Manager, Runtime, State};
+use tauri::{AppHandle, Runtime, State};
 
 use crate::AppData;
 
 /// Get the address that external clients should connect to to use the app
 #[tauri::command]
 pub async fn get_server_address<R: Runtime>(
-    app: AppHandle<R>,
+    _app: AppHandle<R>,
     state: State<'_, Mutex<AppData>>,
 ) -> Result<String, String> {
     let app_data = state.lock().unwrap().clone();
