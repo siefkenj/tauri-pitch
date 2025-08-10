@@ -1,9 +1,7 @@
-use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
 
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime, State};
-
-use crate::AppData;
 
 /// Get the address that external clients should connect to to use the app
 #[tauri::command]
@@ -62,4 +60,44 @@ pub async fn fetch_youtube<R: Runtime>(
         .map_err(|_| "Failed to join thread".to_string())?;
     let ret = thread_result.map_err(|err| err.to_string())?;
     Ok(ret)
+}
+
+/// Get a list of all songs available in the videos directory and return a JSON object in the format of
+/// `SongInfo { key: String, title: String, }`
+#[tauri::command]
+pub async fn get_available_songs<R: Runtime>(app: AppHandle<R>) -> Result<Vec<SongInfo>, String> {
+    let app_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let videos_dir = app_dir.join("youtube_downloads");
+
+    if !videos_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut songs = vec![];
+    for entry in std::fs::read_dir(videos_dir).map_err(|err| err.to_string())? {
+        let entry = entry.map_err(|err| err.to_string())?;
+        if entry.file_type().map_err(|err| err.to_string())?.is_file() {
+            let file_name = entry.file_name();
+            if let Some(file_stem) = file_name.to_str() {
+                // Files are stored as "key.title.mp4", so we split by '.' to get the key and title
+                // and ignore the extension.
+                if let Some((key, title)) = file_stem.split_once('.') {
+                    // Remove the ".mp4" extension from the title
+                    let title = title.trim_end_matches(".mp4");
+                    songs.push(SongInfo {
+                        key: key.to_string(),
+                        title: title.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(songs)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SongInfo {
+    pub key: String,
+    pub title: String,
 }

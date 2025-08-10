@@ -3,37 +3,27 @@ import type { PayloadAction } from "@reduxjs/toolkit";
 import type { RootState } from "../../store";
 
 export type SongInfo = {
+    key: string;
     title: string;
-    artist: string;
-    duration: number;
+    artist?: string;
+    duration?: number;
     playPosition?: number;
+    downloadStatus?: "pending" | "downloading" | "error";
 };
 
 export interface KaraokeState {
     currentlyPlaying: SongInfo | null;
     songQueue: SongInfo[];
+    allSongs: SongInfo[];
+    downloadQueue: SongInfo[];
 }
 
 // Define the initial state using that type
 const initialState: KaraokeState = {
     currentlyPlaying: null,
-    songQueue: [
-        {
-            title: "Sunshine",
-            artist: "Kimberly",
-            duration: 340,
-        },
-        {
-            title: "Moonlight",
-            artist: "Unknown",
-            duration: 240,
-        },
-        {
-            title: "Starlight",
-            artist: "The Stars",
-            duration: 300,
-        }
-    ],
+    songQueue: [],
+    allSongs: [],
+    downloadQueue: [],
 };
 
 const karaokeSlice = createSlice({
@@ -69,6 +59,12 @@ const karaokeSlice = createSlice({
                 state.songQueue.splice(index + 1, 0, song);
             }
         },
+        _setAllSongs: (state, action: PayloadAction<SongInfo[]>) => {
+            state.allSongs = action.payload;
+        },
+        _setDownloadQueue: (state, action: PayloadAction<SongInfo[]>) => {
+            state.downloadQueue = action.payload;
+        },
     },
 });
 
@@ -84,3 +80,4 @@ export const selfSelector = (state: RootState) => state.karaoke;
 export const currentlyPlayingSelector = (state: RootState) =>
     state.karaoke.currentlyPlaying;
 export const songQueueSelector = (state: RootState) => state.karaoke.songQueue;
+export const allSongsSelector = (state: RootState) => state.karaoke.allSongs;

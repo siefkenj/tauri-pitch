@@ -34,6 +34,15 @@ const initialState: CoreState = {
     appRuntime:
         // @ts-ignore
         typeof window.__TAURI_INTERNALS__ !== "undefined" ? "tauri" : "remote",
+    hostingAddress: (() => {
+        const origin = window.location.origin;
+        // If we are running on port 1420, we're in development mode and the port should actually be 9527
+        if (origin.endsWith(":1420")) {
+            return origin.replace(":1420", ":9527");
+        }
+        // Otherwise, we assume the hosting address is the same as the origin
+        return origin;
+    })(),
     pitchDetectionAlgorithm: "mcleod",
     windowSize: 2048,
     clarityThreshold: 0.5,
@@ -80,9 +89,12 @@ const coreSlice = createSlice({
         _setInErrorState: (state, action: PayloadAction<boolean>) => {
             state.inErrorState = action.payload;
         },
-        _setHostingAddress: (state, action: PayloadAction<string | undefined>) => {
+        _setHostingAddress: (
+            state,
+            action: PayloadAction<string | undefined>
+        ) => {
             state.hostingAddress = action.payload;
-        }
+        },
     },
 });
 

@@ -72,7 +72,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_server_address::get_server_address,
             audio_capture::record_sample,
-            fetch_youtube::fetch_youtube
+            fetch_youtube::fetch_youtube,
+            fetch_youtube::get_available_songs
         ])
         //.invoke_handler(tauri::generate_handler![fetch_youtube::fetch_youtube])
         // .setup(move |app| {

@@ -66,12 +66,21 @@ body,
         margin: 0;
         height: 100%;
     }
+
+    .right {
+        margin-left: auto;
+    }
 }
 .karaoke-view {
     height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+
+    .subdued {
+        color: #6c757d;
+        font-size: 0.9em;
+    }
 
     .karaoke-video {
         flex-grow: 1;
@@ -84,6 +93,13 @@ body,
             object-fit: contain;
         }
     }
+}
+.karaoke-navbar-group {
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-evenly;
 }
 .karaoke-playlist {
     overflow: auto;
