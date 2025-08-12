@@ -20,6 +20,10 @@ body,
 .footer,
 .body {
     display: flex;
+    background-color: #edeff2;
+}
+.footer {
+    padding: 2px;
 }
 .header {
     gap: 5px;
@@ -49,7 +53,13 @@ body,
     .nav-tab-strip {
         padding: 4px;
         background-color: #edeff2;
+
+        &.small-screen .bp6-tab {
+          padding: 5px;
+
+        }
     }
+
 }
 
 .karaoke-tabs {
@@ -69,6 +79,15 @@ body,
 
     .right {
         margin-left: auto;
+    }
+
+    .bp6-navbar,
+    .bp6-navbar-group {
+        height: unset;
+    }
+    .bp6-navbar-group {
+        padding-top: 5px;
+        padding-bottom: 5px;
     }
 }
 .karaoke-view {
@@ -105,6 +124,27 @@ body,
     overflow: auto;
     height: 100%;
 }
+.karaoke-song-list {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    height: 100%;
+    .all-songs {
+        flex-grow: 1;
+        overflow: auto;
+    }
+    .karaoke-navbar {
+        margin: 0;
+        padding: 0;
+    }
+    .in-queue {
+        background-color: #6c757d;
+        color: white;
+        button > span {
+            color: gainsboro;
+        }
+    }
+}
 
 div[role="tablist"] {
     user-select: none;
@@ -123,4 +163,29 @@ div[role="tablist"] {
     flex-basis: 0;
     flex-grow: 1;
     max-height: 1fr;
+}
+
+.settings-container {
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    gap: 10px;
+    overflow: auto;
+}
+
+
+@media screen and (max-width: 600px) {
+    .karaoke-tabs {
+        flex-direction: column;
+    }
+    .karaoke-navbar-group {
+        flex-direction: column;
+        align-items: center;
+    }
+    .karaoke-navbar-group > * {
+        margin-bottom: 5px;
+    }
+    .queue-button:not(.in-queue) .bp6-button-text {
+        display: none;
+    }
 }

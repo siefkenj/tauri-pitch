@@ -5,8 +5,11 @@
     "dictionaries": [],
     "words": [],
     "ignoreWords": [
+        "Remux",
         "afinet",
         "bcast",
+        "bestaudio",
+        "bestvideo",
         "blueprintjs",
         "dtolnay",
         "libappindicator",

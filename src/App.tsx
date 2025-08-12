@@ -4,7 +4,6 @@ import "@blueprintjs/icons/lib/css/blueprint-icons.css";
 import "./App.css";
 
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useAppDispatch, useAppSelector } from "./state/hooks";
 import { coreThunks } from "./state/redux-slices/core/thunks";
 import {
@@ -16,11 +15,11 @@ import {
 } from "./state/redux-slices/core";
 import { Button, Divider, HTMLSelect } from "@blueprintjs/core";
 import { CircleChart } from "./components/circle-chart/circle-chat";
-import { SocketTest } from "./socket";
 import { Route, Routes } from "react-router";
 import { NavTabStrip } from "./components/nav-tabs";
 import { Karaoke } from "./components/karaoke";
 import { karaokeActions } from "./state/redux-slices/karaoke";
+import { Settings } from "./components/settings";
 
 function App() {
     const dispatch = useAppDispatch();
@@ -126,12 +125,12 @@ function App() {
                             }
                         />
                         <Route path="karaoke" element={<Karaoke />} />
+                        <Route path="settings" element={<Settings />} />
                     </Route>
                 </Routes>
             </div>
             <div className="footer">
-                <SocketTest />
-                <div>Address: {hostingAddress} (Runtime: {appRuntime})</div>
+                <div>{hostingAddress} (Runtime: {appRuntime})</div>
             </div>
         </main>
     );

@@ -15,7 +15,6 @@ export interface KaraokeState {
     currentlyPlaying: SongInfo | null;
     songQueue: SongInfo[];
     allSongs: SongInfo[];
-    downloadQueue: SongInfo[];
 }
 
 // Define the initial state using that type
@@ -23,7 +22,6 @@ const initialState: KaraokeState = {
     currentlyPlaying: null,
     songQueue: [],
     allSongs: [],
-    downloadQueue: [],
 };
 
 const karaokeSlice = createSlice({
@@ -61,9 +59,6 @@ const karaokeSlice = createSlice({
         },
         _setAllSongs: (state, action: PayloadAction<SongInfo[]>) => {
             state.allSongs = action.payload;
-        },
-        _setDownloadQueue: (state, action: PayloadAction<SongInfo[]>) => {
-            state.downloadQueue = action.payload;
         },
     },
 });

@@ -16,11 +16,14 @@ import {
     NavbarGroup,
     NavbarHeading,
     NonIdealState,
+    OverlayToaster,
     Section,
     SectionCard,
     Spinner,
     Tab,
     Tabs,
+    Toast,
+    ToastOptions,
 } from "@blueprintjs/core";
 import { ItemPredicate, ItemRenderer, Select } from "@blueprintjs/select";
 import { useAppDispatch, useAppSelector } from "../state/hooks";
@@ -34,6 +37,7 @@ import {
 import { hostingAddressSelector } from "../state/redux-slices/core";
 import { formatSongName, getYoutubeIdFromUrl } from "../utils";
 import React from "react";
+import classNames from "classnames";
 
 export function Karaoke() {
     return (
@@ -84,7 +88,11 @@ const renderSong: ItemRenderer<SongInfo> = (
     );
 };
 
-function DownloadFromYoutubeDialog() {
+function DownloadFromYoutubeDialog({
+    onClose,
+}: {
+    onClose?: (messages: ToastOptions[]) => void;
+}) {
     const [youtubeUrl, setYoutubeUrl] = React.useState("");
     // Whether we should show a throbber on the download button, download and queue, or nothing.
     const [downloadingState, setDownloadingState] = React.useState<
@@ -92,6 +100,7 @@ function DownloadFromYoutubeDialog() {
     >(null);
     const availableSongs = useAppSelector(allSongsSelector);
     const dispatch = useAppDispatch();
+    const [toasts, setToasts] = React.useState<ToastOptions[]>([]);
 
     const youtubeId = getYoutubeIdFromUrl(youtubeUrl);
     const alreadyExists = availableSongs.some((song) => song.key === youtubeId);
@@ -136,6 +145,27 @@ function DownloadFromYoutubeDialog() {
     return (
         <>
             <DialogBody>
+                <OverlayToaster>
+                    {toasts.map((toast) => {
+                        const {
+                            key,
+                            timeout: timeout = 10000,
+                            ...rest
+                        } = toast;
+                        return (
+                            <Toast
+                                key={key}
+                                timeout={timeout}
+                                {...rest}
+                                onDismiss={() => {
+                                    setToasts((prev) =>
+                                        prev.filter((t) => t.key !== key)
+                                    );
+                                }}
+                            />
+                        );
+                    })}
+                </OverlayToaster>
                 <p>
                     Copy and paste the URL from a YouTube video to add it to the
                     list of available songs.
@@ -152,7 +182,7 @@ function DownloadFromYoutubeDialog() {
                 actions={
                     <>
                         <Button
-                            disabled={!canDownload}
+                            disabled={!canDownload || downloadingState !== null}
                             intent="none"
                             onClick={async () => {
                                 if (!youtubeId) {
@@ -161,25 +191,46 @@ function DownloadFromYoutubeDialog() {
                                 setDownloadingState("downloadOnly");
                                 try {
                                     console.log("Downloading song", youtubeId);
-                                    await dispatch(
-                                        karaokeActions.pushToDownloadQueue({
+                                    const resp = await dispatch(
+                                        karaokeActions.downloadSong({
                                             key: youtubeId,
                                             title: "???",
                                         })
                                     );
-                                    console.log("Waiting for song download", youtubeId);
-                                    await dispatch(
-                                        karaokeActions.waitForSongDownload({
-                                            key: youtubeId,
-                                            title: "???",
-                                        })
-                                    );
-                                    console.log("Song download complete", youtubeId);
+                                    if ("error" in resp) {
+                                        throw new Error(resp.error.message);
+                                    }
+                                    const toasts: ToastOptions[] = [
+                                        {
+                                            key: `download-${youtubeId}`,
+                                            message: `${resp.payload}\n successfully downloaded! (song id ${youtubeId})`,
+                                            intent: "success",
+                                            icon: "tick",
+                                        },
+                                    ];
+
+                                    if (onClose) {
+                                        onClose(toasts);
+                                    } else {
+                                        setToasts((prev) => [
+                                            ...prev,
+                                            ...toasts,
+                                        ]);
+                                    }
                                 } catch (error) {
                                     console.error(
                                         "Error downloading song:",
                                         error
                                     );
+                                    setToasts((prev) => [
+                                        ...prev,
+                                        {
+                                            key: `download-${youtubeId}`,
+                                            message: `${error}`,
+                                            intent: "danger",
+                                            icon: "error",
+                                        },
+                                    ]);
                                 }
                                 setDownloadingState(null);
                             }}
@@ -194,14 +245,70 @@ function DownloadFromYoutubeDialog() {
                             Download
                         </Button>
                         <Button
-                            disabled={!canDownload}
+                            disabled={!canDownload || downloadingState !== null}
                             intent="primary"
-                            onClick={() => {}}
+                            onClick={async () => {
+                                if (!youtubeId) {
+                                    return;
+                                }
+                                setDownloadingState("downloadAndQueue");
+                                try {
+                                    console.log("Downloading song", youtubeId);
+                                    const resp = await dispatch(
+                                        karaokeActions.downloadSong({
+                                            key: youtubeId,
+                                            title: "???",
+                                        })
+                                    );
+                                    if ("error" in resp) {
+                                        throw new Error(resp.error.message);
+                                    }
+                                    const toasts: ToastOptions[] = [
+                                        {
+                                            key: `download-${youtubeId}`,
+                                            message: `${resp.payload}\n successfully downloaded and queued! (song id ${youtubeId})`,
+                                            intent: "success",
+                                            icon: "tick",
+                                        },
+                                    ];
+                                    // Add the song to the queue
+                                    await dispatch(
+                                        karaokeActions.addToQueue({
+                                            key: youtubeId,
+                                            title: "" + resp.payload,
+                                        })
+                                    );
+
+                                    if (onClose) {
+                                        onClose(toasts);
+                                    } else {
+                                        setToasts((prev) => [
+                                            ...prev,
+                                            ...toasts,
+                                        ]);
+                                    }
+                                } catch (error) {
+                                    console.error(
+                                        "Error downloading song:",
+                                        error
+                                    );
+                                    setToasts((prev) => [
+                                        ...prev,
+                                        {
+                                            key: `download-${youtubeId}`,
+                                            message: `${error}`,
+                                            intent: "danger",
+                                            icon: "error",
+                                        },
+                                    ]);
+                                }
+                                setDownloadingState(null);
+                            }}
                             icon="add"
                             title="Download song to Database and add to Queue"
                             endIcon={
                                 downloadingState === "downloadAndQueue" && (
-                                    <Spinner size={20} />
+                                    <Spinner size={20} intent="warning" />
                                 )
                             }
                         >
@@ -217,20 +324,72 @@ function DownloadFromYoutubeDialog() {
 function SongList() {
     const allSongs = [...useAppSelector(allSongsSelector)];
     allSongs.sort((a, b) => formatSongName(a).localeCompare(formatSongName(b)));
+    const songQueue = useAppSelector(songQueueSelector);
     const dispatch = useAppDispatch();
     const [youtubeDialogOpen, setYoutubeDialogOpen] = React.useState(false);
+    const [toasts, setToasts] = React.useState<ToastOptions[]>([]);
+
+    const queueSong = React.useCallback(async (song: SongInfo) => {
+        const resp = await dispatch(karaokeActions.addToQueue(song));
+        if ("error" in resp && resp.error.message === "DUPLICATE_SONG") {
+            setToasts((prev) => [
+                ...prev,
+                {
+                    key: `add-to-queue-${song.key}-${Date.now()}`,
+                    message: `"${formatSongName(
+                        song
+                    )}" is already in the queue.`,
+                    intent: "warning",
+                    icon: "warning-sign",
+                },
+            ]);
+            return;
+        }
+        setToasts((prev) => [
+            ...prev,
+            {
+                key: `add-to-queue-${song.key}-${Date.now()}`,
+                message: `"${formatSongName(song)}" added to the queue.`,
+                intent: "success",
+                icon: "tick",
+            },
+        ]);
+    }, []);
 
     return (
         <div className="karaoke-song-list">
+            <OverlayToaster>
+                {toasts.map((toast) => {
+                    const { key, ...rest } = toast;
+                    return (
+                        <Toast
+                            key={key}
+                            {...rest}
+                            onDismiss={() => {
+                                setToasts((prev) =>
+                                    prev.filter((t) => t.key !== key)
+                                );
+                            }}
+                        />
+                    );
+                })}
+            </OverlayToaster>
             <Dialog
                 isOpen={youtubeDialogOpen}
                 onClose={() => setYoutubeDialogOpen(false)}
                 title="Add Song from YouTube"
                 icon="video"
             >
-                <DownloadFromYoutubeDialog />
+                <DownloadFromYoutubeDialog
+                    onClose={(messages) => {
+                        if (messages && messages.length > 0) {
+                            setToasts((prev) => [...prev, ...messages]);
+                        }
+                        setYoutubeDialogOpen(false);
+                    }}
+                />
             </Dialog>
-            <Navbar>
+            <Navbar className="karaoke-navbar">
                 <NavbarGroup className="karaoke-navbar-group">
                     <Select
                         items={allSongs}
@@ -238,7 +397,7 @@ function SongList() {
                         itemRenderer={renderSong}
                         noResults={<MenuItem disabled text="No songs found." />}
                         onItemSelect={(song) => {
-                            //  dispatch(karaokeActions.addToQueue(song));
+                            queueSong(song);
                         }}
                     >
                         <Button icon="search" variant="minimal">
@@ -255,31 +414,55 @@ function SongList() {
                     />
                 </NavbarGroup>
             </Navbar>
-            <Section title="All Songs">
+            <Section title="All Songs" className="all-songs">
                 <SectionCard padded={false}>
                     <CardList bordered={false} compact>
                         {allSongs.length > 0 ? (
-                            allSongs.map((song, index) => (
-                                <Card key={`${song.key}-${index}`}>
-                                    {formatSongName(song)}
-                                    <ButtonGroup
-                                        variant="minimal"
-                                        className="right"
+                            allSongs.map((song, index) => {
+                                // Figure out if the song is in the queue
+                                const queuePosition = songQueue.findIndex(
+                                    (s) => s.key === song.key
+                                );
+                                const inQueue = queuePosition >= 0;
+                                return (
+                                    <Card
+                                        key={`${song.key}`}
+                                        className={classNames({
+                                            "in-queue": inQueue,
+                                        })}
                                     >
-                                        <Button
-                                            icon="plus"
-                                            text="Add to Queue"
-                                            onClick={() => {
-                                                dispatch(
-                                                    karaokeActions.addToQueue(
-                                                        song
-                                                    )
-                                                );
-                                            }}
-                                        />
-                                    </ButtonGroup>
-                                </Card>
-                            ))
+                                        <ButtonGroup
+                                            variant="minimal"
+                                            className="left"
+                                        >
+                                            <Button
+                                                className={classNames(
+                                                    "queue-button",
+                                                    {
+                                                        "in-queue": inQueue,
+                                                    }
+                                                )}
+                                                disabled={inQueue}
+                                                icon={inQueue ? null : "plus"}
+                                                title={
+                                                    inQueue
+                                                        ? "Song is queued"
+                                                        : "Add to Queue"
+                                                }
+                                                text={
+                                                    inQueue
+                                                        ? `#${
+                                                              queuePosition + 1
+                                                          } in Queue`
+                                                        : "Add to Queue"
+                                                }
+                                                onClick={() => queueSong(song)}
+                                            />
+                                        </ButtonGroup>
+                                        {formatSongName(song)}
+                                    </Card>
+                                );
+                            })
                         ) : (
                             <Callout intent="primary">
                                 No songs available.
@@ -302,11 +485,14 @@ function ViewSong() {
         <div className="karaoke-view">
             <div className="karaoke-video">
                 {currentlyPlaying ? (
-                    <video
-                        src={`${hostingAddress}/videos/${currentlyPlaying?.key}`}
-                        controls
-                        autoPlay
-                    />
+                    <>
+                        <video
+                            src={`${hostingAddress}/videos/${currentlyPlaying?.key}`}
+                            controls
+                            autoPlay
+                            disablePictureInPicture
+                        />
+                    </>
                 ) : (
                     <NonIdealState
                         icon="pause"
@@ -361,7 +547,16 @@ function ViewSong() {
                             </Button>
                         </>
                     ) : (
-                        "No Next Song"
+                        <>
+                            No Next Song <NavbarDivider />
+                            <Button
+                                icon="random"
+                                text="Play Random Song"
+                                onClick={() => {
+                                    dispatch(karaokeActions.playRandomSong());
+                                }}
+                            />
+                        </>
                     )}
                 </NavbarGroup>
             </Navbar>

@@ -8,8 +8,7 @@
 
 use std::{
     collections::HashMap,
-    fs::{self, File},
-    io::Read,
+    fs::{self},
 };
 
 use http::Uri;
@@ -18,7 +17,6 @@ use tauri::{
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
 use tiny_http::{Header, Response as HttpResponse, Server};
-use warp::filters::fs::file;
 
 #[allow(unused)]
 pub struct Request {
@@ -86,6 +84,7 @@ impl Builder {
                 let youtube_downloads_dir = app_dir.join("youtube_downloads");
 
                 let asset_resolver = app.asset_resolver();
+                let app_for_closure = app.clone();
                 std::thread::spawn(move || {
                     // Set up a hashmap to quickly find files in the youtube_downloads directory.
                     let mut video_file_map = populate_hash_map(&youtube_downloads_dir);
@@ -109,6 +108,98 @@ impl Builder {
                         // We look for a file in the `youtube_downloads` directory whose file name starts with XXX and serve that.
                         if path.starts_with("/videos/") {
                             let video_id = path.trim_start_matches("/videos/");
+                            // If this is a post request, we will fetch it from youtube instead of serving a file.
+                            if req.method() == &tiny_http::Method::Post {
+                                // Read the body to get the youtube hash.
+                                println!(
+                                    "Received request to download video with ID: {}",
+                                    video_id
+                                );
+                                let app = app_for_closure.clone();
+                                let res = tauri::async_runtime::block_on(
+                                    crate::fetch_youtube::fetch_youtube(app, video_id.to_string()),
+                                );
+                                match res {
+                                    Ok(title) => {
+                                        req.respond(
+                                            HttpResponse::from_string(title)
+                                                .with_status_code(200)
+                                                .with_header(
+                                                    Header::from_bytes(
+                                                        "Content-Type",
+                                                        "text/plain",
+                                                    )
+                                                    .unwrap(),
+                                                )
+                                                // Add CORS headers
+                                                .with_header(
+                                                    Header::from_bytes(
+                                                        "Access-Control-Allow-Origin",
+                                                        "*",
+                                                    )
+                                                    .unwrap(),
+                                                )
+                                                .with_header(
+                                                    Header::from_bytes(
+                                                        "Access-Control-Allow-Methods",
+                                                        "POST",
+                                                    )
+                                                    .unwrap(),
+                                                )
+                                                .with_header(
+                                                    Header::from_bytes(
+                                                        "Access-Control-Allow-Headers",
+                                                        "Content-Type",
+                                                    )
+                                                    .unwrap(),
+                                                ),
+                                        )
+                                        .unwrap();
+                                    }
+                                    Err(err) => {
+                                        eprintln!(
+                                            "    Error starting video download for {}: {}",
+                                            video_id, err
+                                        );
+                                        req.respond(
+                                            HttpResponse::from_string(format!(
+                                                "Error starting video download: {}",
+                                                err
+                                            ))
+                                            .with_status_code(500)
+                                            .with_header(
+                                                Header::from_bytes("Content-Type", "text/plain")
+                                                    .unwrap(),
+                                            )
+                                            // Add CORS headers
+                                            .with_header(
+                                                Header::from_bytes(
+                                                    "Access-Control-Allow-Origin",
+                                                    "*",
+                                                )
+                                                .unwrap(),
+                                            )
+                                            .with_header(
+                                                Header::from_bytes(
+                                                    "Access-Control-Allow-Methods",
+                                                    "POST",
+                                                )
+                                                .unwrap(),
+                                            )
+                                            .with_header(
+                                                Header::from_bytes(
+                                                    "Access-Control-Allow-Headers",
+                                                    "Content-Type",
+                                                )
+                                                .unwrap(),
+                                            ),
+                                        )
+                                        .unwrap();
+                                    }
+                                }
+                                continue;
+                            }
+
                             // If the video ID is in the map, we're ready to go. Otherwise,
                             // we search for the file name and update the map.
                             let file_name = video_file_map.get(video_id).cloned().or_else(|| {

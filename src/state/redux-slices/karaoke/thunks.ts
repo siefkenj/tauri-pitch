@@ -5,13 +5,19 @@ import {
     _karaokeReducerActions,
     allSongsSelector,
     selfSelector,
+    songQueueSelector,
 } from "./slice";
 
 import { invoke } from "@tauri-apps/api/core";
-import { appRuntimeSelector, coreActions } from "../core";
+import {
+    appRuntimeSelector,
+    coreActions,
+    hostingAddressSelector,
+} from "../core";
 import { WebsocketProvider } from "y-websocket";
 import { getWebSocketURL } from "../../../utils";
 import { karaokeActions } from ".";
+import { listen } from "@tauri-apps/api/event";
 
 let provider: WebsocketProvider | null = null;
 let doc: Y.Doc | null = null;
@@ -48,14 +54,6 @@ export const karaokeThunks = {
                     _karaokeReducerActions._setAllSongs(event.target.toArray())
                 );
             });
-            const downloadQueue = doc.getArray<SongInfo>("download-queue");
-            downloadQueue.observe((event: Y.YArrayEvent<SongInfo>) => {
-                dispatch(
-                    _karaokeReducerActions._setDownloadQueue(
-                        event.target.toArray()
-                    )
-                );
-            });
 
             if (appRuntime === "tauri") {
                 // We are running in the actual Tauri window, so we have access to `invoke`.
@@ -67,76 +65,26 @@ export const karaokeThunks = {
                 const initialSongsPromise: Promise<SongInfo[]> = invoke(
                     "get_available_songs"
                 );
-                window.setTimeout(async () => {
-                    // We are the "server". Populate the song queue with initial data.
-                    const initialSongs = await initialSongsPromise;
+                window.setTimeout(
+                    async () => {
+                        // We are the "server". Populate the song queue with initial data.
+                        const initialSongs = await initialSongsPromise;
 
-                    // Set the list of all songs and sync across clients
-                    allSongs.delete(0, allSongs.length);
-                    allSongs.push(initialSongs);
-
-                    // Put everything in the queue for now...
-                    songQueue.delete(0, songQueue.length);
-                    songQueue.push(initialSongs);
+                        // Set the list of all songs and sync across clients
+                        allSongs.delete(0, allSongs.length);
+                        allSongs.push(initialSongs);
+                    },
                     // For some reason this delay is needed :-(
-                }, 1000);
-
-                // The song download queue is special. We are the Tauri process, so we are the only
-                // ones that can download songs. We watch the song download queue and act accordingly.
-                downloadQueue.observe(
-                    async (event: Y.YArrayEvent<SongInfo>) => {
-                        // Find the first song in the queue that is pending
-                        const pendingSongIndex = event.target
-                            .toArray()
-                            .findIndex(
-                                (song) => song.downloadStatus === "pending"
-                            );
-                        if (pendingSongIndex === -1) {
-                            // No pending songs, nothing to do
-                            return;
-                        }
-                        let songToDownload: SongInfo = {
-                            ...event.target.get(pendingSongIndex),
-                            downloadStatus: "downloading",
-                        };
-                        if (!songToDownload) {
-                            console.warn(
-                                "Error: No song found at index",
-                                pendingSongIndex,
-                                "in download queue. This may mean that the download queue was updated while this code was executing."
-                            );
-                            return;
-                        }
-                        // Update the song in the download queue
-                        downloadQueue.delete(pendingSongIndex, 1);
-                        downloadQueue.insert(pendingSongIndex, [
-                            songToDownload,
-                        ]);
-                        // Now we can download the song
-                        try {
-                            await invoke("fetch_youtube", {
-                                youtubeHash: songToDownload.key,
-                            });
-                            downloadQueue.delete(pendingSongIndex, 1);
-                        } catch (error) {
-                            console.error(
-                                "Error downloading song",
-                                songToDownload,
-                                error
-                            );
-                            // Update the song in the download queue to reflect the error
-                            songToDownload = {
-                                ...songToDownload,
-                                downloadStatus: "error",
-                                title: "Error: " + error,
-                            };
-                            downloadQueue.delete(pendingSongIndex, 1);
-                            downloadQueue.insert(pendingSongIndex, [
-                                songToDownload,
-                            ]);
-                        }
-                    }
+                    1000
                 );
+
+                // Listen for when new songs are added
+                listen<SongInfo>("song:added", (event) => {
+                    const newSong = event.payload;
+                    console.log("New song added:", newSong);
+                    // Add the new song to the all songs array
+                    allSongs.push([newSong]);
+                });
             }
             dispatch(_karaokeReducerActions._setQueue(songQueue.toArray()));
         }
@@ -201,12 +149,20 @@ export const karaokeThunks = {
      */
     addToQueue: createLoggingAsyncThunk(
         "karaoke/addToQueue",
-        async (song: SongInfo, { dispatch }) => {
+        async (song: SongInfo, { dispatch, getState }) => {
             // We change the song queue in the yjs document and everything else should update automatically.
             if (!doc) {
                 throw new Error("Yjs document not initialized");
             }
             const songQueue = doc.getArray<SongInfo>("song-queue");
+            // If the song is already in the queue, we don't add it.
+            const existingSong = songQueue
+                .toArray()
+                .find((s) => s.key === song.key);
+            if (existingSong) {
+                throw new Error("DUPLICATE_SONG");
+            }
+
             songQueue.push([song]);
         }
     ),
@@ -248,8 +204,8 @@ export const karaokeThunks = {
     /**
      * Push a song to the download queue.
      */
-    pushToDownloadQueue: createLoggingAsyncThunk(
-        "karaoke/pushToDownloadQueue",
+    downloadSong: createLoggingAsyncThunk(
+        "karaoke/downloadSong",
         async (song: SongInfo, { dispatch, getState }) => {
             // We change the song queue in the yjs document and everything else should update automatically.
             if (!doc) {
@@ -269,99 +225,34 @@ export const karaokeThunks = {
                     `Song with id ${song.key} already exists in song library.`
                 );
             }
-            const downloadQueue = doc.getArray<SongInfo>("download-queue");
-            // Check if the song is already in the download queue
-            if (
-                (duplicateSong = downloadQueue
-                    .toArray()
-                    .find((s) => s.key === song.key))
-            ) {
-                console.log(
-                    "Song",
-                    song,
-                    "already exists in download queue, not adding again. Found duplicate:",
-                    duplicateSong
-                );
-                throw new Error(
-                    `Song with id ${song.key} already exists in download queue with status ${duplicateSong.downloadStatus}.`
-                );
+
+            // We made it through all of our checks. Now we send a post request to the server in hopes that it downloads the song.
+            const hostingAddress = hostingAddressSelector(getState());
+            if (!hostingAddress) {
+                return new Error("Hosting address not set");
             }
-            // We believe the song is actually new and not in the download queue, so add it.
-            downloadQueue.push([{ ...song, downloadStatus: "pending" }]);
+            const resp = await fetch(hostingAddress + "/videos/" + song.key, {
+                method: "POST",
+            });
+            if (!resp.ok) {
+                throw new Error(await resp.text());
+            }
+            return resp.text();
         }
     ),
     /**
-     * Monitor the download queue for information about when a song has been downloaded.
+     * Play a random song from the library.
      */
-    waitForSongDownload: createLoggingAsyncThunk(
-        "karaoke/waitForSongDownload",
-        async (song: SongInfo, { dispatch, getState }) => {
-            if (!doc) {
-                throw new Error("Yjs document not initialized");
+    playRandomSong: createLoggingAsyncThunk(
+        "karaoke/playRandomSong",
+        async (_: void, { dispatch, getState }) => {
+            const allSongs = allSongsSelector(getState());
+            const randomSong =
+                allSongs[Math.floor(Math.random() * allSongs.length)];
+            console.log("Playing random song:", randomSong);
+            if (randomSong) {
+                dispatch(karaokeActions._setCurrentlyPlaying(randomSong));
             }
-            // Wait for the song to be downloaded
-            const downloadQueue = doc.getArray<SongInfo>("download-queue");
-            let resolve: Function, reject: Function;
-            const startedDownloadingPromise = new Promise((res, rej) => {
-                resolve = res;
-                reject = rej;
-            });
-            // Poll the download queue. Our song appears with the status "downloading" | "error"
-            // within the first one second of calling this thunk. Return an error if it does not.
-            const startTime = Date.now();
-            const interval = setInterval(() => {
-                const songInQueue = downloadQueue
-                    .toArray()
-                    .find((s) => s.key === song.key);
-                if (songInQueue) {
-                    if (songInQueue.downloadStatus === "downloading") {
-                        // The song is being downloaded, we can resolve the promise
-                        clearInterval(interval);
-                        resolve();
-                    } else if (songInQueue.downloadStatus === "error") {
-                        // The song failed to download, we can reject the promise
-                        clearInterval(interval);
-                        reject(
-                            new Error(
-                                "Song failed to download: " + songInQueue.title
-                            )
-                        );
-                    }
-                }
-                // If 1 second has passed and we haven't entered the "downloading" state, something is wrong.
-                if (Date.now() - startTime > 1000) {
-                    clearInterval(interval);
-                    reject(
-                        new Error(
-                            "Song did not start downloading for some reason :-("
-                        )
-                    );
-                }
-            }, 100);
-            await startedDownloadingPromise;
-
-            // We know the song is in the downloading state. Poll until the song is no longer in the queue or
-            // is in the queue with the status "error".
-            return await new Promise<SongInfo>((resolve, reject) => {
-                const interval = setInterval(() => {
-                    const songInQueue = downloadQueue
-                        .toArray()
-                        .find((s) => s.key === song.key);
-                    if (!songInQueue) {
-                        // The song is no longer in the queue, we can resolve the promise
-                        clearInterval(interval);
-                        resolve(song);
-                    } else if (songInQueue.downloadStatus === "error") {
-                        // The song failed to download, we can reject the promise
-                        clearInterval(interval);
-                        reject(
-                            new Error(
-                                "Song failed to download: " + songInQueue.title
-                            )
-                        );
-                    }
-                }, 100);
-            });
         }
     ),
 };
