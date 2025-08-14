@@ -55,11 +55,9 @@ body,
         background-color: #edeff2;
 
         &.small-screen .bp6-tab {
-          padding: 5px;
-
+            padding: 5px;
         }
     }
-
 }
 
 .karaoke-tabs {
@@ -111,6 +109,14 @@ body,
             height: 100%;
             object-fit: contain;
         }
+    }
+
+    .bp6-align-left {
+        float: unset;
+    }
+
+    .karaoke-playback-rate {
+        margin-left: auto;
     }
 }
 .karaoke-navbar-group {
@@ -173,8 +179,7 @@ div[role="tablist"] {
     overflow: auto;
 }
 
-
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 700px) {
     .karaoke-tabs {
         flex-direction: column;
     }

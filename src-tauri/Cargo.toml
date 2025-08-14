@@ -36,6 +36,7 @@ port-selector = "0.1.6"
 local-ip-address = "0.6.5"
 # Use this branch until https://github.com/boul2gom/yt-dlp/issues/53 is resolved
 yt-dlp = { git = "https://github.com/sshcrack/yt-dlp", rev = "e447714" }
+astra = "0.4.0"
 
 [features]
 jack = []

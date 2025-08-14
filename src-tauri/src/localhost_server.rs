@@ -9,52 +9,25 @@
 use std::{
     collections::HashMap,
     fs::{self},
+    sync::Mutex,
 };
 
-use http::Uri;
+use astra::ResponseBuilder;
+use http::Method;
 use tauri::{
     Manager, Runtime,
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
-use tiny_http::{Header, Response as HttpResponse, Server};
-
-#[allow(unused)]
-pub struct Request {
-    url: String,
-}
-
-#[allow(unused)]
-impl Request {
-    pub fn url(&self) -> &str {
-        &self.url
-    }
-}
-
-pub struct Response {
-    headers: HashMap<String, String>,
-}
-
-impl Response {
-    pub fn add_header<H: Into<String>, V: Into<String>>(&mut self, header: H, value: V) {
-        self.headers.insert(header.into(), value.into());
-    }
-}
-
-type OnRequest = Option<Box<dyn Fn(&Request, &mut Response) + Send + Sync>>;
+//use tiny_http::{Header, Response as HttpResponse, Server};
 
 pub struct Builder {
     port: u16,
     host: Option<String>,
-    on_request: OnRequest,
 }
 
 impl Builder {
     pub fn new(port: u16) -> Self {
-        Self {
-            port,
-            host: None,
-            on_request: None,
-        }
+        Self { port, host: None }
     }
 
     #[allow(unused)]
@@ -64,19 +37,9 @@ impl Builder {
         self
     }
 
-    #[allow(unused)]
-    pub fn on_request<F: Fn(&Request, &mut Response) + Send + Sync + 'static>(
-        mut self,
-        f: F,
-    ) -> Self {
-        self.on_request.replace(Box::new(f));
-        self
-    }
-
-    pub fn build<R: Runtime>(mut self) -> TauriPlugin<R> {
+    pub fn build<R: Runtime>(self) -> TauriPlugin<R> {
         let port = self.port;
         let host = self.host.unwrap_or("0.0.0.0".to_string());
-        let on_request = self.on_request.take();
 
         PluginBuilder::new("localhost")
             .setup(move |app, _api| {
@@ -87,207 +50,181 @@ impl Builder {
                 let app_for_closure = app.clone();
                 std::thread::spawn(move || {
                     // Set up a hashmap to quickly find files in the youtube_downloads directory.
-                    let mut video_file_map = populate_hash_map(&youtube_downloads_dir);
+                    let video_file_map = Mutex::new(populate_hash_map(&youtube_downloads_dir));
 
-                    let server =
-                        Server::http(format!("{host}:{port}")).expect("Unable to spawn server");
                     println!("Listening on localhost server http://{host}:{port}");
-                    for req in server.incoming_requests() {
-                        let path = req
-                            .url()
-                            .parse::<Uri>()
-                            .map(|uri| uri.path().into())
-                            .unwrap_or_else(|_| req.url().into());
-                        let path = if path == "/" {
-                            "index.html".to_string()
-                        } else {
-                            path
-                        };
+                    astra::Server::bind(format!("{host}:{port}"))
+                        .serve(move |req: http::Request<astra::Body>, _info| {
+                            let path = Some(req.uri())
+                                .map(|uri| uri.path().into())
+                                .unwrap_or_else(|| req.uri().to_string());
+                            let path = if path == "/" {
+                                "index.html".to_string()
+                            } else {
+                                path
+                            };
 
-                        // If the path starts with `/videos/XXX`, we serve from a special directory.
-                        // We look for a file in the `youtube_downloads` directory whose file name starts with XXX and serve that.
-                        if path.starts_with("/videos/") {
-                            let video_id = path.trim_start_matches("/videos/");
-                            // If this is a post request, we will fetch it from youtube instead of serving a file.
-                            if req.method() == &tiny_http::Method::Post {
-                                // Read the body to get the youtube hash.
-                                println!(
-                                    "Received request to download video with ID: {}",
-                                    video_id
-                                );
-                                let app = app_for_closure.clone();
-                                let res = tauri::async_runtime::block_on(
-                                    crate::fetch_youtube::fetch_youtube(app, video_id.to_string()),
-                                );
-                                match res {
-                                    Ok(title) => {
-                                        req.respond(
-                                            HttpResponse::from_string(title)
-                                                .with_status_code(200)
-                                                .with_header(
-                                                    Header::from_bytes(
-                                                        "Content-Type",
-                                                        "text/plain",
-                                                    )
-                                                    .unwrap(),
-                                                )
+                            // If the path starts with `/videos/XXX`, we serve from a special directory.
+                            // We look for a file in the `youtube_downloads` directory whose file name starts with XXX and serve that.
+                            if path.starts_with("/videos/") {
+                                let video_id = path.trim_start_matches("/videos/");
+                                // If this is a post request, we will fetch it from youtube instead of serving a file.
+                                if req.method() == &Method::POST {
+                                    // Read the body to get the youtube hash.
+                                    println!(
+                                        "Received request to download video with ID: {}",
+                                        video_id
+                                    );
+                                    let app = app_for_closure.clone();
+                                    let res = tauri::async_runtime::block_on(
+                                        crate::fetch_youtube::fetch_youtube(
+                                            app,
+                                            video_id.to_string(),
+                                        ),
+                                    );
+                                    return match res {
+                                        Ok(title) => {
+                                            ResponseBuilder::new()
+                                                .status(200)
+                                                .header("Content-Type", "text/plain")
                                                 // Add CORS headers
-                                                .with_header(
-                                                    Header::from_bytes(
-                                                        "Access-Control-Allow-Origin",
-                                                        "*",
-                                                    )
-                                                    .unwrap(),
-                                                )
-                                                .with_header(
-                                                    Header::from_bytes(
-                                                        "Access-Control-Allow-Methods",
-                                                        "POST",
-                                                    )
-                                                    .unwrap(),
-                                                )
-                                                .with_header(
-                                                    Header::from_bytes(
-                                                        "Access-Control-Allow-Headers",
-                                                        "Content-Type",
-                                                    )
-                                                    .unwrap(),
-                                                ),
-                                        )
-                                        .unwrap();
-                                    }
-                                    Err(err) => {
-                                        eprintln!(
-                                            "    Error starting video download for {}: {}",
-                                            video_id, err
-                                        );
-                                        req.respond(
-                                            HttpResponse::from_string(format!(
-                                                "Error starting video download: {}",
-                                                err
-                                            ))
-                                            .with_status_code(500)
-                                            .with_header(
-                                                Header::from_bytes("Content-Type", "text/plain")
-                                                    .unwrap(),
-                                            )
-                                            // Add CORS headers
-                                            .with_header(
-                                                Header::from_bytes(
-                                                    "Access-Control-Allow-Origin",
-                                                    "*",
-                                                )
-                                                .unwrap(),
-                                            )
-                                            .with_header(
-                                                Header::from_bytes(
-                                                    "Access-Control-Allow-Methods",
-                                                    "POST",
-                                                )
-                                                .unwrap(),
-                                            )
-                                            .with_header(
-                                                Header::from_bytes(
+                                                .header("Access-Control-Allow-Origin", "*")
+                                                .header("Access-Control-Allow-Methods", "POST")
+                                                .header(
                                                     "Access-Control-Allow-Headers",
                                                     "Content-Type",
                                                 )
-                                                .unwrap(),
-                                            ),
-                                        )
-                                        .unwrap();
-                                    }
-                                }
-                                continue;
-                            }
-
-                            // If the video ID is in the map, we're ready to go. Otherwise,
-                            // we search for the file name and update the map.
-                            let file_name = video_file_map.get(video_id).cloned().or_else(|| {
-                                // We didn't find the file in the map, so we search for it.
-                                find_file_with_prefix(&youtube_downloads_dir, video_id).map(
-                                    |name| {
-                                        video_file_map
-                                            .insert(video_id.to_string(), name.to_string());
-                                        name
-                                    },
-                                )
-                            });
-                            // If we found a file name, we serve it.
-                            if let Some(file_name) = file_name {
-                                let file_path = youtube_downloads_dir.join(&file_name);
-                                if let Ok(asset) = fs::read(&file_path) {
-                                    println!("    Video file found: {}", &file_name);
-                                    let request = Request {
-                                        url: req.url().into(),
-                                    };
-                                    let mut response = Response {
-                                        headers: Default::default(),
-                                    };
-                                    response.add_header("Content-Type", "video/mp4");
-                                    // Allow video seeking; this header doesn't work in tiny_http, though.
-                                    response.add_header("Accept-Ranges", "bytes");
-                                    if let Some(on_request) = &on_request {
-                                        on_request(&request, &mut response);
-                                    }
-                                    let mut resp = HttpResponse::from_data(asset);
-                                    for (header, value) in response.headers {
-                                        if let Ok(h) = Header::from_bytes(header.as_bytes(), value)
-                                        {
-                                            resp.add_header(h);
+                                                .body(astra::Body::new(title))
+                                                .unwrap()
                                         }
+                                        Err(err) => {
+                                            eprintln!(
+                                                "    Error starting video download for {}: {}",
+                                                video_id, err
+                                            );
+                                            ResponseBuilder::new()
+                                                .status(500)
+                                                .header("Content-Type", "text/plain")
+                                                // Add CORS headers
+                                                .header("Access-Control-Allow-Origin", "*")
+                                                .header("Access-Control-Allow-Methods", "POST")
+                                                .header(
+                                                    "Access-Control-Allow-Headers",
+                                                    "Content-Type",
+                                                )
+                                                .body(astra::Body::new(format!(
+                                                    "Error starting video download: {}",
+                                                    err
+                                                )))
+                                                .unwrap()
+                                        }
+                                    };
+                                }
+
+                                // If the video ID is in the map, we're ready to go. Otherwise,
+                                // we search for the file name and update the map.
+                                let file_name = {
+                                    let mut video_file_map = video_file_map.lock().unwrap();
+                                    video_file_map.get(video_id).cloned().or_else(|| {
+                                        // We didn't find the file in the map, so we search for it.
+                                        find_file_with_prefix(&youtube_downloads_dir, video_id).map(
+                                            |name| {
+                                                video_file_map
+                                                    .insert(video_id.to_string(), name.to_string());
+                                                name
+                                            },
+                                        )
+                                    })
+                                };
+                                // If we found a file name, we serve it.
+                                if let Some(file_name) = file_name {
+                                    let file_path = youtube_downloads_dir.join(&file_name);
+                                    if let Ok(asset) = fs::read(&file_path) {
+                                        println!("    Video file found: {}", &file_name);
+                                        // Check if we have requested a specific range of bytes.
+                                        if let Some(range) = req.headers().get("Range") {
+                                            // Parse the range header to get the start and end bytes.
+                                            if let Ok(range_str) = range.to_str() {
+                                                if let Some(range) =
+                                                    range_str.strip_prefix("bytes=")
+                                                {
+                                                    let parts: Vec<&str> =
+                                                        range.split('-').collect();
+                                                    if parts.len() == 2 {
+                                                        if let (Ok(start), Ok(end)) = (
+                                                            parts[0].parse::<usize>(),
+                                                            parts[1]
+                                                                .parse::<usize>()
+                                                                .or::<usize>(Ok(0)),
+                                                        ) {
+                                                            let end =
+                                                                if end == 0 || end >= asset.len() {
+                                                                    asset.len() - 1
+                                                                } else {
+                                                                    end
+                                                                };
+                                                            let chunk = asset[start..=end].to_vec();
+                                                            return ResponseBuilder::new()
+                                                                .status(206)
+                                                                .header("Content-Type", "video/mp4")
+                                                                // Allow video seeking
+                                                                .header("Accept-Ranges", "bytes")
+                                                                .header(
+                                                                    "Content-Range",
+                                                                    format!(
+                                                                        "bytes {}-{}/{}",
+                                                                        start,
+                                                                        end,
+                                                                        asset.len()
+                                                                    ),
+                                                                )
+                                                                .body(astra::Body::new(chunk))
+                                                                .unwrap();
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        return ResponseBuilder::new()
+                                            .status(200)
+                                            .header("Content-Type", "video/mp4")
+                                            // Allow video seeking
+                                            .header("Accept-Ranges", "bytes")
+                                            .body(astra::Body::new(asset))
+                                            .unwrap();
+                                    } else {
+                                        println!("    Video file not found: {}", &file_name);
                                     }
-                                    req.respond(resp).expect("unable to setup response");
-                                    continue;
                                 } else {
-                                    println!("    Video file not found: {}", &file_name);
+                                    println!("    No video file found for ID: {}", video_id);
                                 }
+                                return ResponseBuilder::new()
+                                    .status(404)
+                                    .header("Content-Type", "text/plain")
+                                    .body(astra::Body::new("Video not found"))
+                                    .unwrap();
+                            }
+                            println!("Received request for path: '{}'", &path);
+
+                            #[allow(unused_mut)]
+                            if let Some(mut asset) = asset_resolver.get(path.clone()) {
+                                println!("Received request; delivering asset: '{}' ", &path);
+                                return ResponseBuilder::new()
+                                    .status(200)
+                                    .header("Content-Type", asset.mime_type)
+                                    .body(astra::Body::new(asset.bytes))
+                                    .unwrap();
                             } else {
-                                println!("    No video file found for ID: {}", video_id);
-                            }
-                            req.respond(
-                                HttpResponse::from_string("Video not found")
-                                    .with_status_code(404)
-                                    .with_header(
-                                        Header::from_bytes("Content-Type", "text/plain").unwrap(),
-                                    ),
-                            )
-                            .expect("unable to setup response");
-                            continue;
-                        }
-                        println!("Received request for path: '{}'", &path);
-
-                        #[allow(unused_mut)]
-                        if let Some(mut asset) = asset_resolver.get(path.clone()) {
-                            println!("Received request; delivering asset: '{}' ", &path);
-                            let request = Request {
-                                url: req.url().into(),
-                            };
-                            let mut response = Response {
-                                headers: Default::default(),
-                            };
-
-                            response.add_header("Content-Type", asset.mime_type);
-                            if let Some(csp) = asset.csp_header {
-                                response
-                                    .headers
-                                    .insert("Content-Security-Policy".into(), csp);
+                                println!("Asset not found: '{}'", &path);
                             }
 
-                            if let Some(on_request) = &on_request {
-                                on_request(&request, &mut response);
-                            }
-
-                            let mut resp = HttpResponse::from_data(asset.bytes);
-                            for (header, value) in response.headers {
-                                if let Ok(h) = Header::from_bytes(header.as_bytes(), value) {
-                                    resp.add_header(h);
-                                }
-                            }
-                            req.respond(resp).expect("unable to setup response");
-                        } else {
-                            println!("Asset not found: '{}'", &path);
-                        }
-                    }
+                            ResponseBuilder::new()
+                                .status(500)
+                                .header("Content-Type", "text/plain")
+                                .body(astra::Body::new("Server didn't understand what to process"))
+                                .unwrap()
+                        })
+                        .expect("Unable to spawn server");
                 });
                 Ok(())
             })

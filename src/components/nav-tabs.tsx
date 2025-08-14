@@ -17,7 +17,7 @@ export function NavTabStrip() {
     React.useEffect(() => {
         // Update the smallScreen state based on window width
         const handleResize = () => {
-            setSmallScreen(window.innerWidth < 500); // Adjust the breakpoint as needed
+            setSmallScreen(window.innerWidth < 700); // Adjust the breakpoint as needed
         };
         handleResize(); // Set initial state
         window.addEventListener("resize", handleResize);

@@ -484,6 +484,27 @@ function ViewSong() {
     const songQueue = useAppSelector(songQueueSelector);
     const nextSong: SongInfo | undefined = songQueue[0];
     const videoRef = React.useRef<HTMLVideoElement>(null);
+    const [playbackRate, _setPlaybackRate] = React.useState(1.0);
+    const incrementPlaybackRate = React.useCallback(
+        ({ inc, value }: { inc?: number; value?: number }) => {
+            if (videoRef.current) {
+                let speed = videoRef.current.playbackRate;
+                if (inc != null) {
+                    speed += inc;
+                }
+                if (value != null) {
+                    speed = value;
+                }
+                if (speed < 0.1) {
+                    speed = 0.1; // Prevent negative or zero playback speed
+                }
+                videoRef.current.playbackRate = speed;
+                _setPlaybackRate(speed);
+            }
+        },
+        []
+    );
+
     const hotkeys: HotkeyConfig[] = React.useMemo(() => {
         return [
             {
@@ -495,17 +516,123 @@ function ViewSong() {
                         return;
                     }
                     e.preventDefault();
-                    console.log("Toggling play/pause");
                     if (videoRef.current.paused) {
                         videoRef.current.play();
                     } else {
                         videoRef.current.pause();
                     }
-                    //  dispatch(karaokeActions.togglePlayPause());
+                },
+            },
+            {
+                combo: "m",
+                global: true,
+                label: "Toggle Mute",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    videoRef.current.muted = !videoRef.current.muted;
+                },
+            },
+            {
+                combo: "right",
+                global: true,
+                label: "Seek Forward 2 Seconds",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    videoRef.current.currentTime += 2;
+                },
+            },
+            {
+                combo: "left",
+                global: true,
+                label: "Seek Backward 2 Seconds",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    videoRef.current.currentTime -= 2;
+                },
+            },
+            {
+                combo: "j",
+                global: true,
+                label: "Seek Backward 10 Seconds",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    videoRef.current.currentTime -= 10;
+                },
+            },
+            {
+                combo: "l",
+                global: true,
+                label: "Seek Forward 10 Seconds",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    videoRef.current.currentTime += 10;
+                },
+            },
+            {
+                combo: "n",
+                global: true,
+                label: "Skip to Next Song",
+                onKeyDown: (e) => {
+                    e.preventDefault();
+                    dispatch(karaokeActions.setTopOfQueueAsNextSong());
+                },
+            },
+            {
+                combo: "f",
+                global: true,
+                label: "Toggle Fullscreen",
+                onKeyDown: (e) => {
+                    if (videoRef.current) {
+                        e.preventDefault();
+                        if (document.fullscreenElement) {
+                            document.exitFullscreen();
+                        } else {
+                            videoRef.current.requestFullscreen();
+                        }
+                    }
+                },
+            },
+            {
+                combo: ">",
+                global: true,
+                label: "Increase Playback Speed",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    incrementPlaybackRate({ inc: 0.1 });
+                },
+            },
+            {
+                combo: "<",
+                global: true,
+                label: "Decrease Playback Speed",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    incrementPlaybackRate({ inc: -0.1 });
                 },
             },
         ];
-    }, []);
+    }, [incrementPlaybackRate]);
     const { handleKeyDown, handleKeyUp } = useHotkeys(hotkeys);
 
     return (
@@ -520,6 +647,8 @@ function ViewSong() {
                         <video
                             ref={videoRef}
                             src={`${hostingAddress}/videos/${currentlyPlaying?.key}`}
+                            onKeyDown={handleKeyDown}
+                            onKeyUp={handleKeyUp}
                             controls
                             autoPlay
                             disablePictureInPicture
@@ -548,19 +677,17 @@ function ViewSong() {
             </div>
             <Navbar>
                 <NavbarGroup>
+                    {currentlyPlaying && (
+                        <>
+                            <NavbarHeading>
+                                Playing:{" "}
+                                <b>{formatSongName(currentlyPlaying)}</b>
+                            </NavbarHeading>
+                            <NavbarDivider />
+                        </>
+                    )}
                     {nextSong ? (
                         <>
-                            {currentlyPlaying && (
-                                <>
-                                    <NavbarHeading>
-                                        Playing:{" "}
-                                        <b>
-                                            {formatSongName(currentlyPlaying)}
-                                        </b>
-                                    </NavbarHeading>
-                                    <NavbarDivider />
-                                </>
-                            )}
                             <NavbarHeading>
                                 <span className="subdued">Next:</span>{" "}
                                 {nextSong.artist && nextSong.artist + " - "}
@@ -590,6 +717,26 @@ function ViewSong() {
                             />
                         </>
                     )}
+                    <div className="karaoke-playback-rate">
+                        Speed
+                        <Button
+                            variant="minimal"
+                            onClick={() => incrementPlaybackRate({ inc: -0.1 })}
+                            icon="minus"
+                        />
+                        <Button
+                            onClick={() =>
+                                incrementPlaybackRate({ value: 1.0 })
+                            }
+                        >
+                            {playbackRate.toFixed(1)} ×
+                        </Button>
+                        <Button
+                            variant="minimal"
+                            onClick={() => incrementPlaybackRate({ inc: 0.1 })}
+                            icon="plus"
+                        />
+                    </div>
                 </NavbarGroup>
             </Navbar>
         </div>
