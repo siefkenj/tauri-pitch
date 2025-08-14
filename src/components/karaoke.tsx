@@ -7,6 +7,7 @@ import {
     Dialog,
     DialogBody,
     DialogFooter,
+    HotkeyConfig,
     InputGroup,
     Menu,
     MenuDivider,
@@ -24,6 +25,7 @@ import {
     Tabs,
     Toast,
     ToastOptions,
+    useHotkeys,
 } from "@blueprintjs/core";
 import { ItemPredicate, ItemRenderer, Select } from "@blueprintjs/select";
 import { useAppDispatch, useAppSelector } from "../state/hooks";
@@ -481,12 +483,42 @@ function ViewSong() {
     const currentlyPlaying = useAppSelector(currentlyPlayingSelector);
     const songQueue = useAppSelector(songQueueSelector);
     const nextSong: SongInfo | undefined = songQueue[0];
+    const videoRef = React.useRef<HTMLVideoElement>(null);
+    const hotkeys: HotkeyConfig[] = React.useMemo(() => {
+        return [
+            {
+                combo: "space",
+                global: true,
+                label: "Play/Pause",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    console.log("Toggling play/pause");
+                    if (videoRef.current.paused) {
+                        videoRef.current.play();
+                    } else {
+                        videoRef.current.pause();
+                    }
+                    //  dispatch(karaokeActions.togglePlayPause());
+                },
+            },
+        ];
+    }, []);
+    const { handleKeyDown, handleKeyUp } = useHotkeys(hotkeys);
+
     return (
-        <div className="karaoke-view">
+        <div
+            className="karaoke-view"
+            onKeyDown={handleKeyDown}
+            onKeyUp={handleKeyUp}
+        >
             <div className="karaoke-video">
                 {currentlyPlaying ? (
                     <>
                         <video
+                            ref={videoRef}
                             src={`${hostingAddress}/videos/${currentlyPlaying?.key}`}
                             controls
                             autoPlay

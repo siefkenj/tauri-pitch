@@ -224,6 +224,8 @@ impl Builder {
                                         headers: Default::default(),
                                     };
                                     response.add_header("Content-Type", "video/mp4");
+                                    // Allow video seeking; this header doesn't work in tiny_http, though.
+                                    response.add_header("Accept-Ranges", "bytes");
                                     if let Some(on_request) = &on_request {
                                         on_request(&request, &mut response);
                                     }
