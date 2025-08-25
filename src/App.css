@@ -194,3 +194,9 @@ div[role="tablist"] {
         display: none;
     }
 }
+
+.karaoke-song-select-popup {
+    max-height: 80vh;
+    max-width: 100vw;
+    overflow: auto;
+}

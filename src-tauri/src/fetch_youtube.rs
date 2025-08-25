@@ -84,7 +84,7 @@ pub async fn fetch_youtube<R: Runtime>(
                     let output = std::process::Command::new(executables_dir.join("yt-dlp"))
                         .arg("--no-progress")
                         .arg("-o")
-                        .arg(format!("{id}.{title}"))
+                        .arg(format!("{id}"))
                         // This is different from yt_dlp (I think...)
                         .arg("--cookies")
                         .arg(executables_dir.join("cookies.txt"))
@@ -104,6 +104,23 @@ pub async fn fetch_youtube<R: Runtime>(
                             String::from_utf8_lossy(&output.stderr)
                         ));
                     }
+                    // Rename the video to be in the format of "{id}.{title}.mp4"
+                    let original_path = save_dir.join(format!("{}.mp4", &id));
+                    let new_path = save_dir.join(format!(
+                        "{}.{}.mp4",
+                        &id,
+                        sanitize_filename::sanitize(&title)
+                    ));
+                    println!(
+                        "    Renaming downloaded video from {:?} to {:?}",
+                        &original_path, &new_path
+                    );
+                    std::fs::rename(&original_path, &new_path).map_err(|err| {
+                        format!(
+                            "    Failed to rename downloaded video from {:?} to {:?}: {}",
+                            &original_path, &new_path, err
+                        )
+                    })?;
                     println!(
                         "    Video downloaded successfully. Log:\n      {}",
                         String::from_utf8_lossy(&output.stdout).replace("\n", "\n      ")
