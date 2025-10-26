@@ -15,6 +15,9 @@ body,
     flex-grow: 1;
     flex-direction: column;
 }
+.large-font {
+    font-size: 2em;
+}
 
 .header,
 .footer,
@@ -199,4 +202,12 @@ div[role="tablist"] {
     max-height: 80vh;
     max-width: 100vw;
     overflow: auto;
+}
+
+.centered-qr-code {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }

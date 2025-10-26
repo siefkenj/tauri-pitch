@@ -27,6 +27,7 @@ export interface CoreState {
 
     workerCacheKey?: number;
     inErrorState: boolean;
+    useLargeFont: boolean;
 }
 
 // Define the initial state using that type
@@ -52,6 +53,7 @@ const initialState: CoreState = {
 
     workerCacheKey: undefined,
     inErrorState: false,
+    useLargeFont: false,
 };
 
 const coreSlice = createSlice({
@@ -94,6 +96,9 @@ const coreSlice = createSlice({
             action: PayloadAction<string | undefined>
         ) => {
             state.hostingAddress = action.payload;
+        },
+        setUseLargeFont: (state, action: PayloadAction<boolean>) => {
+            state.useLargeFont = action.payload;
         },
     },
 });

@@ -68,65 +68,52 @@ pub async fn fetch_youtube<R: Runtime>(
             let title = video_info.title.clone();
             let id = video_info.id.clone();
             println!("Downloading video '{}' '{}' from URL: {}", title, id, &url);
-            let video_path: Result<PathBuf, String> = Err("Simulated download failure".to_string());
 
-            // If we failed to download the video, we will try to call the binary manually and pass a cookies.txt file to it.
-            match video_path {
-                Ok(path) => {
-                    println!("    Video downloaded successfully to: {:?}", path);
-                    return Ok(SongInfo { key: id, title });
-                }
-                Err(err) => {
-                    println!(
-                        "    Failed to download video using yt-dlp library: {}. Trying to call binary manually.",
-                        err
-                    );
-                    let output = std::process::Command::new(executables_dir.join("yt-dlp"))
-                        .arg("--no-progress")
-                        .arg("-o")
-                        .arg(format!("{id}"))
-                        // This is different from yt_dlp (I think...)
-                        .arg("--cookies")
-                        .arg(executables_dir.join("cookies.txt"))
-                        // Remux the videos so they are always in the mp4 format
-                        .arg("-t")
-                        .arg("mp4")
-                        .arg("-f")
-                        .arg("bestvideo[height<=?1080][fps<=?60]+bestaudio/best[height<=?1080]")
-                        .arg(url)
-                        .current_dir(save_dir.clone())
-                        .output()
-                        .map_err(|err| format!("    Failed to execute yt-dlp binary: {}", err))?;
-                    if !output.status.success() {
-                        return Err(format!(
-                            "    yt-dlp binary failed with status: {}. Output: {}",
-                            output.status,
-                            String::from_utf8_lossy(&output.stderr)
-                        ));
-                    }
-                    // Rename the video to be in the format of "{id}.{title}.mp4"
-                    let original_path = save_dir.join(format!("{}.mp4", &id));
-                    let new_path = save_dir.join(format!(
-                        "{}.{}.mp4",
-                        &id,
-                        sanitize_filename::sanitize(&title)
-                    ));
-                    println!(
-                        "    Renaming downloaded video from {:?} to {:?}",
-                        &original_path, &new_path
-                    );
-                    std::fs::rename(&original_path, &new_path).map_err(|err| {
-                        format!(
-                            "    Failed to rename downloaded video from {:?} to {:?}: {}",
-                            &original_path, &new_path, err
-                        )
-                    })?;
-                    println!(
-                        "    Video downloaded successfully. Log:\n      {}",
-                        String::from_utf8_lossy(&output.stdout).replace("\n", "\n      ")
-                    );
-                }
+            // Download manually using the commandline because the yt_dlp crate is unreliable.
+            let output = std::process::Command::new(executables_dir.join("yt-dlp"))
+                .arg("--no-progress")
+                .arg("-o")
+                .arg(format!("{id}"))
+                // This is different from yt_dlp (I think...)
+                .arg("--cookies")
+                .arg(executables_dir.join("cookies.txt"))
+                // Remux the videos so they are always in the mp4 format
+                .arg("-t")
+                .arg("mp4")
+                .arg("-f")
+                .arg("bestvideo[height<=?1080][fps<=?60]+bestaudio/best[height<=?1080]")
+                .arg(url)
+                .current_dir(save_dir.clone())
+                .output()
+                .map_err(|err| format!("    Failed to execute yt-dlp binary: {}", err))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "    yt-dlp binary failed with status: {}. Output: {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr)
+                ));
             }
+            // Rename the video to be in the format of "{id}.{title}.mp4"
+            let original_path = save_dir.join(format!("{}.mp4", &id));
+            let new_path = save_dir.join(format!(
+                "{}.{}.mp4",
+                &id,
+                sanitize_filename::sanitize(&title)
+            ));
+            println!(
+                "    Renaming downloaded video from {:?} to {:?}",
+                &original_path, &new_path
+            );
+            std::fs::rename(&original_path, &new_path).map_err(|err| {
+                format!(
+                    "    Failed to rename downloaded video from {:?} to {:?}: {}",
+                    &original_path, &new_path, err
+                )
+            })?;
+            println!(
+                "    Video downloaded successfully. Log:\n      {}",
+                String::from_utf8_lossy(&output.stdout).replace("\n", "\n      ")
+            );
 
             Ok(SongInfo { key: id, title })
         }

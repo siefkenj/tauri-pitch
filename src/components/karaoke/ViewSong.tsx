@@ -6,6 +6,7 @@ import {
     NavbarGroup,
     NavbarHeading,
     NonIdealState,
+    ProgressBar,
     useHotkeys,
 } from "@blueprintjs/core";
 import { useAppDispatch, useAppSelector } from "../../state/hooks";
@@ -27,6 +28,10 @@ export function ViewSong() {
     const nextSong: SongInfo | undefined = songQueue[0];
     const videoRef = React.useRef<HTMLVideoElement>(null);
     const [playbackRate, _setPlaybackRate] = React.useState(1);
+    const [playbackProgress, setPlaybackProgress] = React.useState({
+        percent: 0,
+        remainingTime: 0,
+    });
     const audioContextRef = React.useRef<AudioContext | null>(null);
     const sourceNodeRef = React.useRef<MediaElementAudioSourceNode | null>(
         null
@@ -76,6 +81,22 @@ export function ViewSong() {
         return [
             {
                 combo: "space",
+                global: true,
+                label: "Play/Pause",
+                onKeyDown: (e) => {
+                    if (!videoRef.current) {
+                        return;
+                    }
+                    e.preventDefault();
+                    if (videoRef.current.paused) {
+                        videoRef.current.play();
+                    } else {
+                        videoRef.current.pause();
+                    }
+                },
+            },
+            {
+                combo: "p",
                 global: true,
                 label: "Play/Pause",
                 onKeyDown: (e) => {
@@ -202,6 +223,20 @@ export function ViewSong() {
     }, [incrementPlaybackRate]);
     const { handleKeyDown, handleKeyUp } = useHotkeys(hotkeys);
 
+    // Update playback progress periodically
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            if (videoRef.current) {
+                const percent =
+                    videoRef.current.currentTime / videoRef.current.duration;
+                const remainingTime =
+                    videoRef.current.duration - videoRef.current.currentTime;
+                setPlaybackProgress({ percent, remainingTime });
+            }
+        }, 200); // Update every 500ms
+        return () => clearInterval(interval);
+    }, []);
+
     return (
         <div
             className="karaoke-view"
@@ -241,6 +276,14 @@ export function ViewSong() {
                         }
                     />
                 )}
+            </div>
+            <div>
+                <ProgressBar
+                    animate={false}
+                    stripes={false}
+                    intent="primary"
+                    value={playbackProgress.percent}
+                />
             </div>
             <Navbar>
                 <NavbarGroup>

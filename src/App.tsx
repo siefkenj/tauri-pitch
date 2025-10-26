@@ -15,11 +15,12 @@ import {
 } from "./state/redux-slices/core";
 import { Button, Divider, HTMLSelect } from "@blueprintjs/core";
 import { CircleChart } from "./components/circle-chart/circle-chat";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import { NavTabStrip } from "./components/nav-tabs";
 import { Karaoke } from "./components/karaoke";
 import { karaokeActions } from "./state/redux-slices/karaoke";
 import { Settings } from "./components/settings";
+import classNames from "classnames";
 
 function App() {
     const dispatch = useAppDispatch();
@@ -28,6 +29,7 @@ function App() {
     const clarityThreshold = useAppSelector(clarityThresholdSelector);
     const appRuntime = useAppSelector(appRuntimeSelector);
     const hostingAddress = useAppSelector(hostingAddressSelector);
+    const useLargeFont = useAppSelector((state) => state.core.useLargeFont);
 
     useEffect(() => {
         // Initialize the worker when the app starts
@@ -44,8 +46,9 @@ function App() {
 
     return (
         <main className="container">
-            <div className="body-surround">
+            <div className={classNames("body-surround", { "large-font": useLargeFont })}>
                 <Routes>
+                    <Route path="/" element={<Navigate to="/karaoke" />} />
                     <Route path="" element={<NavTabStrip />}>
                         <Route
                             index
