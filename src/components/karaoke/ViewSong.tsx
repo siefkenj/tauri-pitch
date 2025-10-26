@@ -283,6 +283,28 @@ export function ViewSong() {
                     stripes={false}
                     intent="primary"
                     value={playbackProgress.percent}
+                    onMouseUp={(e) => {
+                        // Find the percentage clicked in the progress bar
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const offsetX = e.clientX - rect.left;
+                        const percent = offsetX / rect.width;
+                        console.log("Clicked at percent:", percent);
+                        if (videoRef.current) {
+                            videoRef.current.currentTime =
+                                videoRef.current.duration * percent;
+                        }
+                    }}
+                    onClick={(e) => {
+                        // Find the percentage clicked in the progress bar
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const offsetX = e.clientX - rect.left;
+                        const percent = offsetX / rect.width;
+                        console.log("Clicked at percent:", percent);
+                        if (videoRef.current) {
+                            videoRef.current.currentTime =
+                                videoRef.current.duration * percent;
+                        }
+                    }}
                 />
             </div>
             <Navbar>
