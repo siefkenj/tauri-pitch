@@ -33,7 +33,7 @@ export const karaokeThunks = {
             if (!doc) {
                 doc = new Y.Doc();
             }
-            if (!provider) {
+            if (!provider && appRuntime !== "tauri") {
                 provider = new WebsocketProvider(
                     getWebSocketURL(),
                     "tauri-pitch",
@@ -59,6 +59,14 @@ export const karaokeThunks = {
                 // We are running in the actual Tauri window, so we have access to `invoke`.
                 const address: string = await invoke("get_server_address");
                 console.log("Hosting address:", address);
+                if (!provider) {
+                    provider = new WebsocketProvider(
+                        getWebSocketURL(address),
+                        "tauri-pitch",
+                        doc,
+                        { disableBc: true }
+                    );
+                }
                 dispatch(coreActions._setHostingAddress(address));
 
                 // We need to initialize our data structures.
