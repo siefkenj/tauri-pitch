@@ -254,20 +254,22 @@ fn populate_hash_map(root_dir: &std::path::Path) -> HashMap<String, String> {
     map
 }
 
-/// Scan through a directory and search for a file name that starts with the given prefix.
-/// Prefers `.mp4` over `.webm` when both exist.
+/// Scan through a directory and search for a file matching the given YouTube ID.
+/// Supports both new format (`TITLE|YOUTUBE ID.ext`) and old format (`YOUTUBE ID.TITLE.ext`).
 fn find_file_with_prefix(dir: &std::path::Path, prefix: &str) -> Option<String> {
+    let suffix_mp4 = format!("|{}.mp4", prefix);
+    let suffix_webm = format!("|{}.webm", prefix);
+    let prefix = format!("{}.", prefix);
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
-                if let Some(file_name) = path.file_name().and_then(|s| s.to_str())
-                    && file_name.starts_with(prefix)
-                {
-                    if file_name.ends_with(".mp4") {
-                        return Some(file_name.to_string());
-                    }
-                    if file_name.ends_with(".webm") {
+                if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                    if file_name.ends_with(&suffix_mp4)
+                        || file_name.ends_with(&suffix_webm)
+                        || (file_name.starts_with(&prefix)
+                            && (file_name.ends_with(".mp4") || file_name.ends_with(".webm")))
+                    {
                         return Some(file_name.to_string());
                     }
                 }

@@ -115,13 +115,10 @@ pub async fn fetch_youtube<R: Runtime>(
                     strip_ansi(&String::from_utf8_lossy(&output.stderr))
                 ));
             }
-            // Rename the video to be in the format of "{id}.{title}.mp4"
+            // Rename the video to be in the format of "{title}|{id}.mp4"
             let original_path = save_dir.join(format!("{}.mp4", &id));
-            let new_path = save_dir.join(format!(
-                "{}.{}.mp4",
-                &id,
-                sanitize_filename::sanitize(&title)
-            ));
+            let sanitized_title = sanitize_filename::sanitize(&title).replace('|', "");
+            let new_path = save_dir.join(format!("{} |{}.mp4", sanitized_title, &id));
             println!(
                 "    Renaming downloaded video from {:?} to {:?}",
                 &original_path, &new_path
@@ -226,13 +223,20 @@ pub async fn get_available_songs<R: Runtime>(app: AppHandle<R>) -> Result<Vec<So
             if let Some(file_name_str) = file_name.to_str()
                 && file_name_str.ends_with(ext)
             {
-                if let Some((key, title)) = file_name_str.trim_end_matches(ext).split_once('.') {
-                    if !seen_keys.contains(key) {
-                        seen_keys.insert(key.to_string());
-                        songs.push(SongInfo {
-                            key: key.to_string(),
-                            title: title.to_string(),
-                        });
+                let stem = file_name_str.trim_end_matches(ext);
+                // New format: "TITLE|YOUTUBEID.ext"
+                let parsed = if let Some((title, key)) = stem.rsplit_once('|') {
+                    Some((key.to_string(), title.to_string()))
+                // Old format: "YOUTUBEID.TITLE.ext"
+                } else if let Some((key, title)) = stem.split_once('.') {
+                    Some((key.to_string(), title.to_string()))
+                } else {
+                    None
+                };
+                if let Some((key, title)) = parsed {
+                    if !seen_keys.contains(&key) {
+                        seen_keys.insert(key.clone());
+                        songs.push(SongInfo { key, title });
                     }
                 }
             }
