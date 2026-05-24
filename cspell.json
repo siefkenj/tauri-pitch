@@ -19,7 +19,8 @@
         "patchelf",
         "swatinem",
         "tauri",
-        "webkitgtk"
+        "webkitgtk",
+        "ytdlp"
     ],
     "import": []
 }

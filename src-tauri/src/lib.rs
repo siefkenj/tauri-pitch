@@ -73,7 +73,9 @@ pub fn run() {
             get_server_address::get_server_address,
             audio_capture::record_sample,
             fetch_youtube::fetch_youtube,
-            fetch_youtube::get_available_songs
+            fetch_youtube::get_available_songs,
+            fetch_youtube::get_ytdlp_version,
+            fetch_youtube::update_ytdlp
         ])
         //.invoke_handler(tauri::generate_handler![fetch_youtube::fetch_youtube])
         // .setup(move |app| {

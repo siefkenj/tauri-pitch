@@ -3,6 +3,26 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+/// Strip ANSI escape sequences (e.g. color codes) from a string.
+fn strip_ansi(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\x1b' && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
+            i += 2;
+            while i < bytes.len() && !bytes[i].is_ascii_alphabetic() {
+                i += 1;
+            }
+            i += 1; // skip terminating letter
+        } else {
+            out.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    out
+}
+
 /// Fetch a YouTube video by its video id. If successful, the title of the video is returned.
 #[tauri::command]
 pub async fn fetch_youtube<R: Runtime>(
@@ -71,7 +91,9 @@ pub async fn fetch_youtube<R: Runtime>(
 
             // Download manually using the commandline because the yt_dlp crate is unreliable.
             let output = std::process::Command::new(executables_dir.join("yt-dlp"))
+                .env("NO_COLOR", "1")
                 .arg("--no-progress")
+                .arg("--no-colors")
                 .arg("-o")
                 .arg(format!("{id}"))
                 // This is different from yt_dlp (I think...)
@@ -90,7 +112,7 @@ pub async fn fetch_youtube<R: Runtime>(
                 return Err(format!(
                     "    yt-dlp binary failed with status: {}. Output: {}",
                     output.status,
-                    String::from_utf8_lossy(&output.stderr)
+                    strip_ansi(&String::from_utf8_lossy(&output.stderr))
                 ));
             }
             // Rename the video to be in the format of "{id}.{title}.mp4"
@@ -132,8 +154,53 @@ pub async fn fetch_youtube<R: Runtime>(
     Ok(ret.title)
 }
 
+/// Get the version of the yt-dlp binary.
+#[tauri::command]
+pub async fn get_ytdlp_version<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
+    let app_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let executables_dir = app_dir.join("libs");
+
+    let output = std::process::Command::new(executables_dir.join("yt-dlp"))
+        .arg("--version")
+        .output()
+        .map_err(|err| format!("Failed to execute yt-dlp binary: {}", err))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "yt-dlp --version failed with status: {}",
+            output.status
+        ));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Update the yt-dlp binary.
+#[tauri::command]
+pub async fn update_ytdlp<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
+    let app_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let executables_dir = app_dir.join("libs");
+    let yt_dlp_path = executables_dir.join("yt-dlp");
+
+    let output = std::process::Command::new(&yt_dlp_path)
+        .arg("--update")
+        .output()
+        .map_err(|err| format!("Failed to execute yt-dlp binary: {}", err))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "yt-dlp --update failed with status: {}. Output: {}",
+            output.status,
+            strip_ansi(&String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+
+    Ok(())
+}
+
 /// Get a list of all songs available in the videos directory and return a JSON object in the format of
 /// `SongInfo { key: String, title: String, }`
+/// Both `.mp4` and `.webm` files are indexed. If both exist for the same key, `.mp4` takes priority.
 #[tauri::command]
 pub async fn get_available_songs<R: Runtime>(app: AppHandle<R>) -> Result<Vec<SongInfo>, String> {
     let app_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
@@ -143,21 +210,30 @@ pub async fn get_available_songs<R: Runtime>(app: AppHandle<R>) -> Result<Vec<So
         return Ok(vec![]);
     }
 
-    let mut songs = vec![];
-    for entry in std::fs::read_dir(videos_dir).map_err(|err| err.to_string())? {
-        let entry = entry.map_err(|err| err.to_string())?;
-        if entry.file_type().map_err(|err| err.to_string())?.is_file() {
+    let mut songs: Vec<SongInfo> = vec![];
+    let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // Pre-collect so we can do two passes: mp4 first so it takes priority over webm.
+    let entries: Vec<_> = std::fs::read_dir(&videos_dir)
+        .map_err(|err| err.to_string())?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .collect();
+
+    for ext in [".mp4", ".webm"] {
+        for entry in &entries {
             let file_name = entry.file_name();
-            if let Some(file_stem) = file_name.to_str() {
-                // Files are stored as "key.title.mp4", so we split by '.' to get the key and title
-                // and ignore the extension.
-                if let Some((key, title)) = file_stem.split_once('.') {
-                    // Remove the ".mp4" extension from the title
-                    let title = title.trim_end_matches(".mp4");
-                    songs.push(SongInfo {
-                        key: key.to_string(),
-                        title: title.to_string(),
-                    });
+            if let Some(file_name_str) = file_name.to_str()
+                && file_name_str.ends_with(ext)
+            {
+                if let Some((key, title)) = file_name_str.trim_end_matches(ext).split_once('.') {
+                    if !seen_keys.contains(key) {
+                        seen_keys.insert(key.to_string());
+                        songs.push(SongInfo {
+                            key: key.to_string(),
+                            title: title.to_string(),
+                        });
+                    }
                 }
             }
         }
