@@ -58,7 +58,7 @@ pub async fn fetch_youtube<R: Runtime>(
             let video_info = fetcher
                 .fetch_video_infos(url.clone())
                 .await
-                .map_err(|err| format!("Failed to fetch video info: {}", err))?;
+                .map_err(|err| strip_ansi(&format!("Failed to fetch video info: {}", err)))?;
 
             // The actual downloading of the video through yt_dlp is unreliable...so we simulate an error and always manually call the app.
             // // Try to find a video format with a width of 1280 or height of 720
@@ -92,6 +92,8 @@ pub async fn fetch_youtube<R: Runtime>(
             // Download manually using the commandline because the yt_dlp crate is unreliable.
             let output = std::process::Command::new(executables_dir.join("yt-dlp"))
                 .env("NO_COLOR", "1")
+                .env("DENO_OPTS", "--allow-env")
+                .env("WS_NO_BUFFER_UTIL", "1")
                 .arg("--no-progress")
                 .arg("--no-colors")
                 .arg("-o")
