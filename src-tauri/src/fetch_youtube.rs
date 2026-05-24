@@ -92,8 +92,11 @@ pub async fn fetch_youtube<R: Runtime>(
             // Download manually using the commandline because the yt_dlp crate is unreliable.
             let output = std::process::Command::new(executables_dir.join("yt-dlp"))
                 .env("NO_COLOR", "1")
+                // XXX: This doesn't work. deno doesn't read the DENO_OPTS env variable.
                 .env("DENO_OPTS", "--allow-env")
                 .env("WS_NO_BUFFER_UTIL", "1")
+                .arg("--remote-components")
+                .arg("ejs:npm")
                 .arg("--no-progress")
                 .arg("--no-colors")
                 .arg("-o")
