@@ -209,6 +209,11 @@ body,
         }
     }
 }
+.karaoke-song-select-popup {
+    &.compact {
+        width: 17vw;
+    }
+}
 
 div[role="tablist"] {
     user-select: none;

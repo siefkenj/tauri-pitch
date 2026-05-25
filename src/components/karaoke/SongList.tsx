@@ -75,6 +75,9 @@ export function SongList() {
     const dispatch = useAppDispatch();
     const [youtubeDialogOpen, setYoutubeDialogOpen] = React.useState(false);
     const [toasts, setToasts] = React.useState<ToastOptions[]>([]);
+    const currentlyPlaying = useAppSelector(
+        (state) => state.karaoke.currentlyPlaying,
+    );
 
     const queueSong = React.useCallback(async (song: SongInfo) => {
         const resp = await dispatch(karaokeActions.addToQueue(song));
@@ -149,7 +152,15 @@ export function SongList() {
                         onItemSelect={(song) => {
                             queueSong(song);
                         }}
-                        menuProps={{ className: "karaoke-song-select-popup" }}
+                        popoverProps={{
+                            minimal: true,
+                            position: "bottom-left",
+                        }}
+                        menuProps={{
+                            className: classNames("karaoke-song-select-popup", {
+                                compact: !!currentlyPlaying,
+                            }),
+                        }}
                     >
                         <Button icon="search" variant="minimal">
                             Search
