@@ -17,6 +17,7 @@
         "libwebkit",
         "netifas",
         "patchelf",
+        "rsplit",
         "swatinem",
         "tauri",
         "webkitgtk",

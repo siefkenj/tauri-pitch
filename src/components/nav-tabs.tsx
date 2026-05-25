@@ -2,12 +2,18 @@ import { Tab, TabId, TabPanel, Tabs } from "@blueprintjs/core";
 import classNames from "classnames";
 import React from "react";
 import { Outlet, useLocation, useNavigate, useRoutes } from "react-router";
+import { useAppSelector } from "../state/hooks";
 
 export function NavTabStrip() {
     const TABS_PARENT_ID = React.useId();
     const navigate = useNavigate();
     const location = useLocation();
+    const currentlyPlaying = useAppSelector(
+        (state) => state.karaoke.currentlyPlaying,
+    );
     const [smallScreen, setSmallScreen] = React.useState(false);
+    // If we're playing a song, we want maximum screen real estate for the song view
+    const condensedView = smallScreen || currentlyPlaying;
     // The location gives us the tab key.
     const selectedTabId =
         (location.pathname.startsWith("/")
@@ -33,24 +39,24 @@ export function NavTabStrip() {
                 onChange={navigate}
                 selectedTabId={selectedTabId}
                 className={classNames("nav-tab-strip", {
-                    "small-screen": smallScreen,
+                    "small-screen": condensedView,
                 })}
             >
                 <Tab
                     id="circle-chart"
-                    title={!smallScreen && "Detect Pitch"}
+                    title={!condensedView && "Detect Pitch"}
                     aria-description="Detect Pitch"
                     icon="pulse"
                 />
                 <Tab
                     id="karaoke"
-                    title={!smallScreen && "Karaoke"}
+                    title={!condensedView && "Karaoke"}
                     aria-description="Karaoke"
                     icon="music"
                 />
                 <Tab
                     id="settings"
-                    title={!smallScreen && "Settings"}
+                    title={!condensedView && "Settings"}
                     aria-description="Settings"
                     icon="cog"
                 />

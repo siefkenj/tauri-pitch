@@ -307,7 +307,7 @@ export function ViewSong() {
                     }}
                 />
             </div>
-            <Navbar>
+            <Navbar className="view-song-bottom-nav">
                 <NavbarGroup>
                     {currentlyPlaying && (
                         <>

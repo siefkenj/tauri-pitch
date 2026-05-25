@@ -34,7 +34,7 @@ const filterSong: ItemPredicate<SongInfo> = (
     query,
     song,
     _index,
-    exactMatch
+    exactMatch,
 ) => {
     const normalizedTitle = formatSongName(song).toLowerCase();
     const normalizedQuery = query.toLowerCase();
@@ -49,7 +49,7 @@ const filterSong: ItemPredicate<SongInfo> = (
 };
 const renderSong: ItemRenderer<SongInfo> = (
     song,
-    { handleClick, handleFocus, modifiers, query }
+    { handleClick, handleFocus, modifiers, query },
 ) => {
     if (!modifiers.matchesPredicate) {
         return null;
@@ -84,7 +84,7 @@ export function SongList() {
                 {
                     key: `add-to-queue-${song.key}-${Date.now()}`,
                     message: `"${formatSongName(
-                        song
+                        song,
                     )}" is already in the queue.`,
                     intent: "warning",
                     icon: "warning-sign",
@@ -114,7 +114,7 @@ export function SongList() {
                             {...rest}
                             onDismiss={() => {
                                 setToasts((prev) =>
-                                    prev.filter((t) => t.key !== key)
+                                    prev.filter((t) => t.key !== key),
                                 );
                             }}
                         />
@@ -172,7 +172,7 @@ export function SongList() {
                             allSongs.map((song, index) => {
                                 // Figure out if the song is in the queue
                                 const queuePosition = songQueue.findIndex(
-                                    (s) => s.key === song.key
+                                    (s) => s.key === song.key,
                                 );
                                 const inQueue = queuePosition >= 0;
                                 return (
@@ -191,7 +191,7 @@ export function SongList() {
                                                     "queue-button",
                                                     {
                                                         "in-queue": inQueue,
-                                                    }
+                                                    },
                                                 )}
                                                 disabled={inQueue}
                                                 icon={inQueue ? null : "plus"}
@@ -201,11 +201,19 @@ export function SongList() {
                                                         : "Add to Queue"
                                                 }
                                                 text={
-                                                    inQueue
-                                                        ? `#${
-                                                              queuePosition + 1
-                                                          } in Queue`
-                                                        : "Add to Queue"
+                                                    inQueue ? (
+                                                        <>
+                                                            {`#${queuePosition + 1}`}
+                                                            <span className="descriptive-text">
+                                                                {" "}
+                                                                in Queue
+                                                            </span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="descriptive-text">
+                                                            Add to Queue
+                                                        </span>
+                                                    )
                                                 }
                                                 onClick={() => queueSong(song)}
                                             />
@@ -267,7 +275,7 @@ export function DownloadFromYoutubeDialog({
                 karaokeActions.downloadSong({
                     key: youtubeId,
                     title: "???",
-                })
+                }),
             );
             if ("error" in resp) {
                 throw new Error(resp.error.message);
@@ -354,7 +362,7 @@ export function DownloadFromYoutubeDialog({
                                 {...rest}
                                 onDismiss={() => {
                                     setToasts((prev) =>
-                                        prev.filter((t) => t.key !== key)
+                                        prev.filter((t) => t.key !== key),
                                     );
                                 }}
                             />
@@ -411,7 +419,7 @@ export function DownloadFromYoutubeDialog({
                                         karaokeActions.downloadSong({
                                             key: youtubeId,
                                             title: "???",
-                                        })
+                                        }),
                                     );
                                     if ("error" in resp) {
                                         throw new Error(resp.error.message);
@@ -429,7 +437,7 @@ export function DownloadFromYoutubeDialog({
                                         karaokeActions.addToQueue({
                                             key: youtubeId,
                                             title: "" + resp.payload,
-                                        })
+                                        }),
                                     );
 
                                     if (onClose) {
@@ -443,7 +451,7 @@ export function DownloadFromYoutubeDialog({
                                 } catch (error) {
                                     console.error(
                                         "Error downloading song:",
-                                        error
+                                        error,
                                     );
                                     setToasts((prev) => [
                                         ...prev,

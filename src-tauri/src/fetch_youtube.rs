@@ -229,10 +229,10 @@ pub async fn get_available_songs<R: Runtime>(app: AppHandle<R>) -> Result<Vec<So
                 && file_name_str.ends_with(ext)
             {
                 let stem = file_name_str.trim_end_matches(ext);
-                // New format: "TITLE|YOUTUBEID.ext"
+                // Format: "TITLE|YOUTUBE ID.ext"
                 let parsed = if let Some((title, key)) = stem.rsplit_once('|') {
                     Some((key.to_string(), title.to_string()))
-                // Old format: "YOUTUBEID.TITLE.ext"
+                // Format: "YOUTUBE ID.TITLE.ext"
                 } else if let Some((key, title)) = stem.split_once('.') {
                     Some((key.to_string(), title.to_string()))
                 } else {
