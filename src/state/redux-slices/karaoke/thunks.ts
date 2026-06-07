@@ -18,6 +18,7 @@ import { WebsocketProvider } from "y-websocket";
 import { getWebSocketURL } from "../../../utils";
 import { karaokeActions } from ".";
 import { listen } from "@tauri-apps/api/event";
+import { balancedShuffle } from "./utils/balanced-shuffle";
 
 let provider: WebsocketProvider | null = null;
 let doc: Y.Doc | null = null;
@@ -246,6 +247,26 @@ export const karaokeThunks = {
                 throw new Error(await resp.text());
             }
             return resp.text();
+        }
+    ),
+    /**
+     * Shuffle all songs in the queue while keeping the first song in place.
+     */
+    shuffleQueue: createLoggingAsyncThunk(
+        "karaoke/shuffleQueue",
+        async (_: void, {}) => {
+            if (!doc) {
+                throw new Error("Yjs document not initialized");
+            }
+            const songQueue = doc.getArray<SongInfo>("song-queue");
+            if (songQueue.length <= 2) {
+                return;
+            }
+            const tail = balancedShuffle(songQueue.toArray().slice(1));
+            doc.transact(() => {
+                songQueue.delete(1, tail.length);
+                songQueue.insert(1, tail);
+            });
         }
     ),
     /**

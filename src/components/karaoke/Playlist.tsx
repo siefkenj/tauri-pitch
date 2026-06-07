@@ -40,7 +40,13 @@ export function Playlist() {
             <Section
                 title="Up Next"
                 rightElement={
-                    <Button variant="minimal" icon={<Icon icon="random" />}>
+                    <Button
+                        variant="minimal"
+                        icon={<Icon icon="random" />}
+                        onClick={() => {
+                            dispatch(karaokeActions.shuffleQueue());
+                        }}
+                    >
                         Shuffle
                     </Button>
                 }
