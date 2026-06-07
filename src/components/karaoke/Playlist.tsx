@@ -3,14 +3,16 @@ import {
     ButtonGroup,
     Callout,
     Card,
-    CardList, Section,
-    SectionCard
+    CardList,
+    Icon,
+    Section,
+    SectionCard,
 } from "@blueprintjs/core";
 import { useAppDispatch, useAppSelector } from "../../state/hooks";
 import {
     currentlyPlayingSelector,
     karaokeActions,
-    songQueueSelector
+    songQueueSelector,
 } from "../../state/redux-slices/karaoke";
 import { formatSongName } from "../../utils";
 import React from "react";
@@ -35,7 +37,14 @@ export function Playlist() {
                     </CardList>
                 </SectionCard>
             </Section>
-            <Section title="Up Next">
+            <Section
+                title="Up Next"
+                rightElement={
+                    <Button variant="minimal" icon={<Icon icon="random" />}>
+                        Shuffle
+                    </Button>
+                }
+            >
                 <SectionCard padded={false}>
                     <CardList bordered={false} compact>
                         {songQueue.length > 0 ? (
@@ -51,28 +60,31 @@ export function Playlist() {
                                             onClick={() => {
                                                 dispatch(
                                                     karaokeActions.promoteSong(
-                                                        index
-                                                    )
+                                                        index,
+                                                    ),
                                                 );
-                                            }} />
+                                            }}
+                                        />
                                         <Button
                                             icon="chevron-down"
                                             onClick={() => {
                                                 dispatch(
                                                     karaokeActions.demoteSong(
-                                                        index
-                                                    )
+                                                        index,
+                                                    ),
                                                 );
-                                            }} />
+                                            }}
+                                        />
                                         <Button
                                             icon="cross"
                                             onClick={() => {
                                                 dispatch(
                                                     karaokeActions.removeFromQueue(
-                                                        index
-                                                    )
+                                                        index,
+                                                    ),
                                                 );
-                                            }} />
+                                            }}
+                                        />
                                     </ButtonGroup>
                                 </Card>
                             ))

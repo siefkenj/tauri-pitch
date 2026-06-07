@@ -14,3 +14,9 @@ First build the `pitch-detect-wasm` blob
 cd pitch-detect-wasm
 wasm-pack build --target web
 ```
+
+Then run the dev version with
+
+```bash
+npm run tauri dev
+```

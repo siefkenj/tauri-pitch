@@ -186,6 +186,13 @@ body,
 .karaoke-playlist {
     overflow: auto;
     height: 100%;
+
+    .right {
+        margin-left: auto;
+    }
+    .bp6-section-header {
+        width: 100%;
+    }
 }
 .karaoke-song-list {
     display: flex;

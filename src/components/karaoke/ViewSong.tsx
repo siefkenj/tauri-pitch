@@ -34,7 +34,7 @@ export function ViewSong() {
     });
     const audioContextRef = React.useRef<AudioContext | null>(null);
     const sourceNodeRef = React.useRef<MediaElementAudioSourceNode | null>(
-        null
+        null,
     );
     const incrementPlaybackRate = React.useCallback(
         ({ inc, value }: { inc?: number; value?: number }) => {
@@ -53,7 +53,7 @@ export function ViewSong() {
                 _setPlaybackRate(speed);
             }
         },
-        []
+        [],
     );
 
     // // Setup audio context and source node when video element is available
@@ -268,7 +268,7 @@ export function ViewSong() {
                                     text="Play Next Song in Queue"
                                     onClick={() => {
                                         dispatch(
-                                            karaokeActions.setTopOfQueueAsNextSong()
+                                            karaokeActions.setTopOfQueueAsNextSong(),
                                         );
                                     }}
                                 />
@@ -330,8 +330,21 @@ export function ViewSong() {
                                 icon="arrow-right"
                                 onClick={() => {
                                     dispatch(
-                                        karaokeActions.setTopOfQueueAsNextSong()
+                                        karaokeActions.setTopOfQueueAsNextSong(),
                                     );
+                                }}
+                                onKeyDown={(e) => {
+                                    // If the space was pressed, do nothing
+                                    if (e.key === " ") {
+                                        console.log(
+                                            "Space key pressed, ignoring to prevent conflicts with global hotkeys",
+                                        );
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        // XXX: Fix types
+                                        // @ts-ignore
+                                        e.target?.blur();
+                                    }
                                 }}
                             >
                                 Skip to Next Song
@@ -345,6 +358,19 @@ export function ViewSong() {
                                 text="Play Random Song"
                                 onClick={() => {
                                     dispatch(karaokeActions.playRandomSong());
+                                }}
+                                onKeyDown={(e) => {
+                                    // If the space was pressed, do nothing
+                                    if (e.key === " ") {
+                                        console.log(
+                                            "Space key pressed, ignoring to prevent conflicts with global hotkeys",
+                                        );
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        // XXX: Fix types
+                                        // @ts-ignore
+                                        e.target?.blur();
+                                    }
                                 }}
                             />
                         </>
