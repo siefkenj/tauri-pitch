@@ -39,20 +39,20 @@ export const karaokeThunks = {
                     getWebSocketURL(),
                     "tauri-pitch",
                     doc,
-                    { disableBc: true }
+                    { disableBc: true },
                 );
             }
 
             const songQueue = doc.getArray<SongInfo>("song-queue");
             songQueue.observe((event: Y.YArrayEvent<SongInfo>) => {
                 dispatch(
-                    _karaokeReducerActions._setQueue(event.target.toArray())
+                    _karaokeReducerActions._setQueue(event.target.toArray()),
                 );
             });
             const allSongs = doc.getArray<SongInfo>("all-songs");
             allSongs.observe((event: Y.YArrayEvent<SongInfo>) => {
                 dispatch(
-                    _karaokeReducerActions._setAllSongs(event.target.toArray())
+                    _karaokeReducerActions._setAllSongs(event.target.toArray()),
                 );
             });
 
@@ -65,14 +65,14 @@ export const karaokeThunks = {
                         getWebSocketURL(address),
                         "tauri-pitch",
                         doc,
-                        { disableBc: true }
+                        { disableBc: true },
                     );
                 }
                 dispatch(coreActions._setHostingAddress(address));
 
                 // We need to initialize our data structures.
                 const initialSongsPromise: Promise<SongInfo[]> = invoke(
-                    "get_available_songs"
+                    "get_available_songs",
                 );
                 window.setTimeout(
                     async () => {
@@ -84,7 +84,7 @@ export const karaokeThunks = {
                         allSongs.push(initialSongs);
                     },
                     // For some reason this delay is needed :-(
-                    1000
+                    1000,
                 );
 
                 // Listen for when new songs are added
@@ -96,7 +96,7 @@ export const karaokeThunks = {
                 });
             }
             dispatch(_karaokeReducerActions._setQueue(songQueue.toArray()));
-        }
+        },
     ),
     /**
      * Clean up the karaoke system.
@@ -113,7 +113,7 @@ export const karaokeThunks = {
                 doc = null;
             }
             dispatch(_karaokeReducerActions._setQueue([]));
-        }
+        },
     ),
     /**
      * Demote a song in the queue to the next lower position.
@@ -132,7 +132,7 @@ export const karaokeThunks = {
             const song = songQueue.get(index);
             songQueue.delete(index, 1);
             songQueue.insert(index + 1, [song]);
-        }
+        },
     ),
     /**
      * Promote a song in the queue to the next higher position.
@@ -151,7 +151,7 @@ export const karaokeThunks = {
             const song = songQueue.get(index);
             songQueue.delete(index, 1);
             songQueue.insert(index - 1, [song]);
-        }
+        },
     ),
     /**
      * Add a song to the queue.
@@ -173,7 +173,7 @@ export const karaokeThunks = {
             }
 
             songQueue.push([song]);
-        }
+        },
     ),
     /**
      * Remove a song from the queue.
@@ -190,7 +190,7 @@ export const karaokeThunks = {
                 return;
             }
             songQueue.delete(index, 1);
-        }
+        },
     ),
     /**
      * Set the next song in the queue as currently playing.
@@ -208,7 +208,7 @@ export const karaokeThunks = {
                 // Remove the song from the queue
                 songQueue.delete(0, 1);
             }
-        }
+        },
     ),
     /**
      * Push a song to the download queue.
@@ -228,10 +228,10 @@ export const karaokeThunks = {
                     "Song",
                     song,
                     "already exists in all songs, not adding to download queue. Found duplicate:",
-                    duplicateSong
+                    duplicateSong,
                 );
                 throw new Error(
-                    `Song with id ${song.key} already exists in song library.`
+                    `Song with id ${song.key} already exists in song library.`,
                 );
             }
 
@@ -247,7 +247,7 @@ export const karaokeThunks = {
                 throw new Error(await resp.text());
             }
             return resp.text();
-        }
+        },
     ),
     /**
      * Shuffle all songs in the queue while keeping the first song in place.
@@ -267,7 +267,42 @@ export const karaokeThunks = {
                 songQueue.delete(1, tail.length);
                 songQueue.insert(1, tail);
             });
-        }
+        },
+    ),
+    /**
+     * Upload a local video file to the server's song library.
+     * Returns the assigned key (e.g. "UPLOAD00001" or the supplied YouTube ID).
+     */
+    uploadSong: createLoggingAsyncThunk(
+        "karaoke/uploadSong",
+        async ({ file }: { file: File }, { getState }) => {
+            const data = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    resolve((reader.result as string).split(",")[1]);
+                };
+                reader.onerror = () => reject(new Error("Failed to read file"));
+                reader.readAsDataURL(file);
+            });
+
+            const hostingAddress = hostingAddressSelector(getState());
+            if (!hostingAddress) {
+                throw new Error("Hosting address not set");
+            }
+            // Upload goes to the tiny_http upload server on port+2 (astra deadlocks on large bodies)
+            const uploadUrl = new URL(hostingAddress);
+            uploadUrl.port = String(Number(uploadUrl.port) + 2);
+            uploadUrl.pathname = "/upload-file";
+            const resp = await fetch(uploadUrl.toString(), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ filename: file.name, data }),
+            });
+            if (!resp.ok) {
+                throw new Error(await resp.text());
+            }
+            return resp.text();
+        },
     ),
     /**
      * Play a random song from the library.
@@ -282,6 +317,6 @@ export const karaokeThunks = {
             if (randomSong) {
                 dispatch(karaokeActions._setCurrentlyPlaying(randomSong));
             }
-        }
+        },
     ),
 };

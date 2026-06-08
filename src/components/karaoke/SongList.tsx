@@ -7,6 +7,7 @@ import {
     Dialog,
     DialogBody,
     DialogFooter,
+    FileInput,
     InputGroup,
     MenuItem,
     Navbar,
@@ -26,7 +27,11 @@ import {
     karaokeActions,
     songQueueSelector,
 } from "../../state/redux-slices/karaoke";
-import { formatSongName, getYoutubeIdFromUrl } from "../../utils";
+import {
+    formatSongName,
+    getYoutubeIdFromUrl,
+    parseUploadFilename,
+} from "../../utils";
 import classNames from "classnames";
 import React from "react";
 
@@ -134,6 +139,7 @@ export function SongList() {
                 canEscapeKeyClose={true}
             >
                 <DownloadFromYoutubeDialog
+                    key={String(youtubeDialogOpen)}
                     onClose={(messages) => {
                         if (messages && messages.length > 0) {
                             setToasts((prev) => [...prev, ...messages]);
@@ -245,27 +251,63 @@ export function SongList() {
     );
 }
 
+function checkCanPlay(file: File): Promise<boolean> {
+    return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const video = document.createElement("video");
+        const cleanup = () => URL.revokeObjectURL(url);
+        video.addEventListener(
+            "canplay",
+            () => {
+                cleanup();
+                resolve(true);
+            },
+            { once: true },
+        );
+        video.addEventListener(
+            "error",
+            () => {
+                cleanup();
+                resolve(false);
+            },
+            { once: true },
+        );
+        video.src = url;
+    });
+}
+
 /**
- * Content of the dialog that allows you to download a song from YouTube.
+ * Content of the dialog that allows you to download a song from YouTube or
+ * upload a local video file.
  */
 export function DownloadFromYoutubeDialog({
     onClose,
 }: {
     onClose?: (messages: ToastOptions[]) => void;
 }) {
+    const [uploadType, setUploadType] = React.useState<"youtube" | "file">(
+        "youtube",
+    );
     const [youtubeUrl, setYoutubeUrl] = React.useState("");
-    // Whether we should show a throbber on the download button, download and queue, or nothing.
-    const [downloadingState, setDownloadingState] = React.useState<
-        "downloadOnly" | "downloadAndQueue" | null
-    >(null);
-    const availableSongs = useAppSelector(allSongsSelector);
-    const dispatch = useAppDispatch();
+    const [uploadFile, setUploadFile] = React.useState<File | null>(null);
+    const [canPlay, setCanPlay] = React.useState<boolean | null>(null);
+    // Whether we should show a throbber on the add button, add and queue, or nothing.
+    const [busy, setBusy] = React.useState<"only" | "andQueue" | null>(null);
+    const [isDragOver, setIsDragOver] = React.useState(false);
     const [toasts, setToasts] = React.useState<ToastOptions[]>([]);
 
-    const youtubeId = getYoutubeIdFromUrl(youtubeUrl);
-    const alreadyExists = availableSongs.some((song) => song.key === youtubeId);
-    const canDownload = youtubeId && !alreadyExists;
+    const availableSongs = useAppSelector(allSongsSelector);
+    const dispatch = useAppDispatch();
     const inputRef = React.useRef<HTMLInputElement>(null);
+
+    const youtubeId = getYoutubeIdFromUrl(youtubeUrl);
+    const alreadyExists = availableSongs.some((s) => s.key === youtubeId);
+    const canDownload = !!(youtubeId && !alreadyExists);
+    const parsedUpload = uploadFile
+        ? parseUploadFilename(uploadFile.name)
+        : null;
+    const canUpload = uploadFile !== null && canPlay === true;
+    const canAct = uploadType === "youtube" ? canDownload : canUpload;
 
     React.useEffect(() => {
         if (inputRef.current) {
@@ -275,220 +317,303 @@ export function DownloadFromYoutubeDialog({
         }
     }, []);
 
-    const downloadSong = React.useCallback(async () => {
-        if (!youtubeId) {
+    React.useEffect(() => {
+        if (!uploadFile) {
+            setCanPlay(null);
             return;
         }
-        setDownloadingState("downloadOnly");
-        try {
-            console.log("Downloading song", youtubeId);
-            const resp = await dispatch(
-                karaokeActions.downloadSong({
-                    key: youtubeId,
-                    title: "???",
-                }),
-            );
-            if ("error" in resp) {
-                throw new Error(resp.error.message);
+        setCanPlay(null);
+        let cancelled = false;
+        checkCanPlay(uploadFile).then((result) => {
+            if (!cancelled) {
+                setCanPlay(result);
             }
-            const toasts: ToastOptions[] = [
-                {
-                    key: `download-${youtubeId}`,
-                    message: `${resp.payload}\n successfully downloaded! (song id ${youtubeId})`,
-                    intent: "success",
-                    icon: "tick",
-                },
-            ];
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [uploadFile]);
 
-            if (onClose) {
-                onClose(toasts);
+    const finish = (newToasts: ToastOptions[]) => {
+        if (onClose) {
+            onClose(newToasts);
+        } else {
+            setToasts((p) => [...p, ...newToasts]);
+        }
+    };
+    const pushError = (key: string, error: unknown) =>
+        setToasts((p) => [
+            ...p,
+            { key, message: `${error}`, intent: "danger", icon: "error" },
+        ]);
+
+    const downloadVid = async ({
+        queueAfterwards,
+    }: {
+        queueAfterwards: boolean;
+    }) => {
+        setBusy(queueAfterwards ? "andQueue" : "only");
+        try {
+            if (uploadType === "youtube") {
+                if (!youtubeId) {
+                    return;
+                }
+                const resp = await dispatch(
+                    karaokeActions.downloadSong({
+                        key: youtubeId,
+                        title: "???",
+                    }),
+                );
+                if ("error" in resp) {
+                    throw new Error(resp.error.message);
+                }
+                if (queueAfterwards) {
+                    // Add the song to the queue
+                    await dispatch(
+                        karaokeActions.addToQueue({
+                            key: youtubeId,
+                            title: `${resp.payload}`,
+                        }),
+                    );
+                }
+                const verb = queueAfterwards
+                    ? "downloaded and queued"
+                    : "downloaded";
+                finish([
+                    {
+                        key: `download-${youtubeId}`,
+                        message: `${resp.payload} successfully ${verb}!`,
+                        intent: "success",
+                        icon: "tick",
+                    },
+                ]);
             } else {
-                setToasts((prev) => [...prev, ...toasts]);
+                if (!uploadFile || !parsedUpload) {
+                    return;
+                }
+                const resp = await dispatch(
+                    karaokeActions.uploadSong({ file: uploadFile }),
+                );
+                if ("error" in resp) {
+                    throw new Error(resp.error.message);
+                }
+                const assignedKey = resp.payload as string;
+                if (queueAfterwards) {
+                    // Add the song to the queue
+                    await dispatch(
+                        karaokeActions.addToQueue({
+                            key: assignedKey,
+                            title: parsedUpload,
+                        }),
+                    );
+                }
+                finish([
+                    {
+                        key: `upload-${assignedKey}`,
+                        message: `${parsedUpload} successfully uploaded!`,
+                        intent: "success",
+                        icon: "tick",
+                    },
+                ]);
             }
         } catch (error) {
-            console.error("Error downloading song:", error);
-            setToasts((prev) => [
-                ...prev,
-                {
-                    key: `download-${youtubeId}`,
-                    message: `${error}`,
-                    intent: "danger",
-                    icon: "error",
-                },
-            ]);
+            pushError(`action-error-${Date.now()}`, error);
         }
-        setDownloadingState(null);
-    }, [youtubeId]);
+        setBusy(null);
+    };
 
     let callout = null;
-    if (youtubeId && !alreadyExists) {
-        callout = (
-            <Callout intent="primary">
-                <p>
-                    YouTube ID:{" "}
-                    <b>
-                        <code>{youtubeId}</code>
-                    </b>
-                </p>
-                <p>This song can be downloaded.</p>
-            </Callout>
-        );
-    } else if (youtubeId && alreadyExists) {
-        callout = (
-            <Callout intent="warning">
-                <p>
-                    YouTube ID:{" "}
-                    <b>
-                        <code>{youtubeId}</code>
-                    </b>
-                </p>
-                <p>
-                    This song is already in the list of available songs. You can
-                    search for it in the list.
-                </p>
-            </Callout>
-        );
-    } else if (!youtubeId && youtubeUrl) {
-        callout = (
-            <Callout intent="warning">
-                No YouTube video ID found. Copy-and-paste the whole URL from the
-                video you want to add.
-            </Callout>
-        );
+    if (uploadType === "youtube") {
+        if (youtubeId && !alreadyExists) {
+            callout = (
+                <Callout intent="primary">
+                    <p>
+                        YouTube ID:{" "}
+                        <b>
+                            <code>{youtubeId}</code>
+                        </b>
+                    </p>
+                    <p>This song can be downloaded.</p>
+                </Callout>
+            );
+        } else if (youtubeId && alreadyExists) {
+            callout = (
+                <Callout intent="warning">
+                    <p>
+                        YouTube ID:{" "}
+                        <b>
+                            <code>{youtubeId}</code>
+                        </b>
+                    </p>
+                    <p>This song is already in the list of available songs.</p>
+                </Callout>
+            );
+        } else if (!youtubeId && youtubeUrl) {
+            callout = (
+                <Callout intent="warning">
+                    No YouTube video ID found. Copy-and-paste the whole URL from
+                    the video you want to add.
+                </Callout>
+            );
+        }
+    } else {
+        if (uploadFile && canPlay === false) {
+            callout = (
+                <Callout intent="danger">
+                    This file cannot be played by your browser. Try a different
+                    format (MP4 recommended).
+                </Callout>
+            );
+        } else if (parsedUpload) {
+            callout = (
+                <Callout intent="primary">
+                    <p>
+                        Title: <b>{parsedUpload}</b>
+                    </p>
+                </Callout>
+            );
+        }
     }
+
     return (
         <>
             <DialogBody>
                 <OverlayToaster>
-                    {toasts.map((toast) => {
-                        const {
-                            key,
-                            timeout: timeout = 10000,
-                            ...rest
-                        } = toast;
-                        return (
-                            <Toast
-                                key={key}
-                                timeout={timeout}
-                                {...rest}
-                                onDismiss={() => {
-                                    setToasts((prev) =>
-                                        prev.filter((t) => t.key !== key),
-                                    );
+                    {toasts.map(({ key, timeout = 10000, ...rest }) => (
+                        <Toast
+                            key={key}
+                            timeout={timeout}
+                            {...rest}
+                            onDismiss={() =>
+                                setToasts((p) => p.filter((t) => t.key !== key))
+                            }
+                        />
+                    ))}
+                </OverlayToaster>
+                {uploadType === "youtube" ? (
+                    <>
+                        <p>
+                            Copy and paste the URL from a YouTube video to add
+                            it to the list of available songs.
+                        </p>
+                        <p>
+                            <InputGroup
+                                placeholder="YouTube URL"
+                                leftIcon="page-layout"
+                                tabIndex={0}
+                                value={youtubeUrl}
+                                inputRef={inputRef}
+                                onChange={(e) => setYoutubeUrl(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && canDownload) {
+                                        downloadVid({ queueAfterwards: false });
+                                    }
                                 }}
                             />
-                        );
-                    })}
-                </OverlayToaster>
-                <p>
-                    Copy and paste the URL from a YouTube video to add it to the
-                    list of available songs.
-                </p>
-                <InputGroup
-                    placeholder="YouTube URL"
-                    leftIcon="page-layout"
-                    tabIndex={0}
-                    value={youtubeUrl}
-                    inputRef={inputRef}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" && canDownload) {
-                            downloadSong();
-                        }
-                    }}
-                />
-                {callout}
+                        </p>
+                        {callout}
+                        <p>
+                            <Button
+                                variant="minimal"
+                                onClick={() => setUploadType("file")}
+                            >
+                                Click here to upload a file instead.
+                            </Button>
+                        </p>
+                    </>
+                ) : (
+                    <>
+                        <p>
+                            Select a video file to upload. The file should be
+                            titled:
+                        </p>
+                        <p style={{ textAlign: "center" }}>
+                            <code>Artist - Song Title.mp4</code>{" "}
+                        </p>
+                        <p
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                setIsDragOver(true);
+                            }}
+                            onDragLeave={() => setIsDragOver(false)}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                setIsDragOver(false);
+                                const file = e.dataTransfer.files[0];
+                                if (file) {
+                                    setUploadFile(file);
+                                }
+                            }}
+                            style={
+                                isDragOver
+                                    ? {
+                                          outline: "2px solid #4c90f0",
+                                          borderRadius: 4,
+                                      }
+                                    : undefined
+                            }
+                        >
+                            <FileInput
+                                text={
+                                    uploadFile
+                                        ? uploadFile.name
+                                        : "Choose file…"
+                                }
+                                fill
+                                hasSelection={uploadFile !== null}
+                                onInputChange={(e) =>
+                                    setUploadFile(
+                                        (e.target as HTMLInputElement)
+                                            .files?.[0] ?? null,
+                                    )
+                                }
+                                inputProps={{ accept: "video/*,audio/mp4" }}
+                            />
+                        </p>
+                        {callout}
+                        <p>
+                            <Button
+                                variant="minimal"
+                                onClick={() => setUploadType("youtube")}
+                            >
+                                Click here to add a song from YouTube instead.
+                            </Button>
+                        </p>
+                    </>
+                )}
             </DialogBody>
             <DialogFooter
                 actions={
                     <>
                         <Button
-                            disabled={!canDownload || downloadingState !== null}
+                            disabled={!canAct || busy !== null}
                             intent="none"
-                            onClick={downloadSong}
-                            icon="download"
-                            title="Download to Song Database"
-                            endIcon={
-                                downloadingState === "downloadOnly" && (
-                                    <Spinner size={20} />
-                                )
+                            icon="add"
+                            onClick={() =>
+                                downloadVid({ queueAfterwards: false })
                             }
+                            endIcon={busy === "only" && <Spinner size={20} />}
                         >
-                            Download
+                            Add
                         </Button>
                         <Button
-                            disabled={!canDownload || downloadingState !== null}
+                            disabled={!canAct || busy !== null}
                             intent="primary"
-                            onClick={async () => {
-                                if (!youtubeId) {
-                                    return;
-                                }
-                                setDownloadingState("downloadAndQueue");
-                                try {
-                                    console.log("Downloading song", youtubeId);
-                                    const resp = await dispatch(
-                                        karaokeActions.downloadSong({
-                                            key: youtubeId,
-                                            title: "???",
-                                        }),
-                                    );
-                                    if ("error" in resp) {
-                                        throw new Error(resp.error.message);
-                                    }
-                                    const toasts: ToastOptions[] = [
-                                        {
-                                            key: `download-${youtubeId}`,
-                                            message: `${resp.payload}\n successfully downloaded and queued! (song id ${youtubeId})`,
-                                            intent: "success",
-                                            icon: "tick",
-                                        },
-                                    ];
-                                    // Add the song to the queue
-                                    await dispatch(
-                                        karaokeActions.addToQueue({
-                                            key: youtubeId,
-                                            title: "" + resp.payload,
-                                        }),
-                                    );
-
-                                    if (onClose) {
-                                        onClose(toasts);
-                                    } else {
-                                        setToasts((prev) => [
-                                            ...prev,
-                                            ...toasts,
-                                        ]);
-                                    }
-                                } catch (error) {
-                                    console.error(
-                                        "Error downloading song:",
-                                        error,
-                                    );
-                                    setToasts((prev) => [
-                                        ...prev,
-                                        {
-                                            key: `download-${youtubeId}`,
-                                            message: `${error}`,
-                                            intent: "danger",
-                                            icon: "error",
-                                        },
-                                    ]);
-                                }
-                                setDownloadingState(null);
-                            }}
                             icon="add"
-                            title="Download song to Database and add to Queue"
+                            onClick={() =>
+                                downloadVid({ queueAfterwards: true })
+                            }
                             endIcon={
-                                downloadingState === "downloadAndQueue" && (
+                                busy === "andQueue" && (
                                     <Spinner size={20} intent="warning" />
                                 )
                             }
                         >
-                            Download and Queue
+                            Add and Queue
                         </Button>
                     </>
                 }
-            ></DialogFooter>
+            />
         </>
     );
 }

@@ -7,6 +7,7 @@ mod audio_capture;
 mod fetch_youtube;
 mod get_server_address;
 mod localhost_server;
+mod upload_server;
 mod yrs_server;
 // use tauri::{webview::WebviewWindowBuilder, WebviewUrl};
 
@@ -35,7 +36,16 @@ pub fn run() {
         if port_selector::is_free(guess) {
             guess
         } else {
-            panic!("Could not fined two sequential free ports");
+            panic!("Could not find two sequential free ports");
+        }
+    };
+    // Third port used by the tiny_http upload server (astra deadlocks on large request bodies)
+    let upload_port = {
+        let guess = second_open_port + 1;
+        if port_selector::is_free(guess) {
+            guess
+        } else {
+            panic!("Could not find three sequential free ports");
         }
     };
 
@@ -59,6 +69,12 @@ pub fn run() {
                     rt.block_on(yrs_server::start(app_data.websocket_port));
                 });
 
+                // Spawn a tiny_http upload server — astra deadlocks when uploading files
+                let app_handle = app.app_handle().clone();
+                std::thread::spawn(move || {
+                    upload_server::start(app_handle, upload_port);
+                });
+
                 Ok(())
             }
         })
@@ -75,7 +91,7 @@ pub fn run() {
             fetch_youtube::fetch_youtube,
             fetch_youtube::get_available_songs,
             fetch_youtube::get_ytdlp_version,
-            fetch_youtube::update_ytdlp
+            fetch_youtube::update_ytdlp,
         ])
         //.invoke_handler(tauri::generate_handler![fetch_youtube::fetch_youtube])
         // .setup(move |app| {

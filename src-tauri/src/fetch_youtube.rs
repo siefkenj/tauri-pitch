@@ -3,6 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
+fn sanitize_title(s: &str) -> String {
+    sanitize_filename::sanitize(s)
+        .replace('|', "")
+        .trim()
+        .to_string()
+}
+
 /// Strip ANSI escape sequences (e.g. color codes) from a string.
 fn strip_ansi(s: &str) -> String {
     let bytes = s.as_bytes();
@@ -122,7 +129,7 @@ pub async fn fetch_youtube<R: Runtime>(
             }
             // Rename the video to be in the format of "{title}|{id}.mp4"
             let original_path = save_dir.join(format!("{}.mp4", &id));
-            let sanitized_title = sanitize_filename::sanitize(&title).replace('|', "");
+            let sanitized_title = sanitize_title(&title);
             let new_path = save_dir.join(format!("{} |{}.mp4", sanitized_title, &id));
             println!(
                 "    Renaming downloaded video from {:?} to {:?}",
@@ -154,6 +161,79 @@ pub async fn fetch_youtube<R: Runtime>(
         .map_err(|err| err.to_string())?;
 
     Ok(ret.title)
+}
+
+/// Save raw video bytes to the song library under a fresh `UPLOAD#####` key.
+pub async fn save_uploaded_song<R: Runtime>(
+    app: AppHandle<R>,
+    bytes: Vec<u8>,
+    filename: String,
+) -> Result<SongInfo, String> {
+    let app_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+    let save_dir = app_dir.join("youtube_downloads");
+    std::fs::create_dir_all(&save_dir).map_err(|e| e.to_string())?;
+
+    // Split off extension and trim whitespace.
+    let (stem, ext) = match filename.rfind('.') {
+        Some(dot) => (&filename[..dot], &filename[dot + 1..]),
+        None => (filename.as_str(), "mp4"),
+    };
+    let stem = stem.trim();
+
+    // Strip trailing |<id> if present: find the last |, verify everything after it is
+    // id-valid chars, and assume it's an id if the part before the | contains a "-".
+    let stem = if let Some(pipe) = stem.rfind('|') {
+        let (before, after) = (&stem[..pipe], &stem[pipe + 1..]);
+        if after
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            && before.contains('-')
+        {
+            before
+        } else {
+            stem
+        }
+    } else {
+        stem
+    };
+
+    let title = sanitize_title(stem);
+
+    // All saved files end in ` |UPLOAD#####.ext`. Search through those to find the next available UPLOAD##### key.
+    // Find the highest UPLOAD##### id already on disk and increment.
+    let mut max_n: u32 = 0;
+    if let Ok(entries) = std::fs::read_dir(&save_dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str().map(|s| s.to_string()) {
+                if let Some(pos) = name.rfind("|UPLOAD") {
+                    let digits = &name[pos + 7..].chars().take(5).collect::<String>();
+                    if digits.len() <= 5 {
+                        if let Ok(n) = digits.parse::<u32>() {
+                            max_n = max_n.max(n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let key = format!("UPLOAD{:05}", max_n + 1);
+
+    let filename = format!("{} |{}.{}", title, key, ext);
+    let file_path = save_dir.join(&filename);
+
+    std::fs::write(&file_path, &bytes)
+        .map_err(|e| format!("Failed to write uploaded file: {}", e))?;
+
+    println!("Uploaded song saved as {:?}", file_path);
+
+    let song_info = SongInfo {
+        key: key.clone(),
+        title,
+    };
+    app.emit("song:added", &song_info)
+        .map_err(|e| e.to_string())?;
+
+    Ok(song_info)
 }
 
 /// Get the version of the yt-dlp binary.

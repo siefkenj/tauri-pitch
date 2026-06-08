@@ -17,6 +17,7 @@
         "libwebkit",
         "netifas",
         "patchelf",
+        "rfind",
         "rsplit",
         "swatinem",
         "tauri",

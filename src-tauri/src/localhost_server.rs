@@ -18,7 +18,6 @@ use tauri::{
     Manager, Runtime,
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
-//use tiny_http::{Header, Response as HttpResponse, Server};
 
 pub struct Builder {
     port: u16,
@@ -68,7 +67,8 @@ impl Builder {
                             // We look for a file in the `youtube_downloads` directory whose file name starts with XXX and serve that.
                             if path.starts_with("/videos/") {
                                 let video_id = path.trim_start_matches("/videos/");
-                                // If this is a post request, we will fetch it from youtube instead of serving a file.
+
+                                // If this is a post request, handle upload or YouTube download.
                                 if req.method() == &Method::POST {
                                     // Read the body to get the youtube hash.
                                     println!(

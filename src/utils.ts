@@ -32,6 +32,21 @@ export function formatSongName(song: SongInfo): string {
     return song.title;
 }
 
+/**
+ * Extract a display title from an uploaded filename.
+ * Strips the extension, strips a trailing `|<id>` suffix when the title
+ * portion contains a dash (Artist - Title format), and removes any
+ * remaining `|` characters.
+ */
+export function parseUploadFilename(filename: string): string {
+    const stem = filename.replace(/\.[^/.]+$/, "").trim();
+    const pipeIdx = stem.lastIndexOf("|");
+    if (pipeIdx >= 0 && stem.slice(0, pipeIdx).includes("-")) {
+        return stem.slice(0, pipeIdx).replace(/\|/g, "").trim();
+    }
+    return stem.replace(/\|/g, "").trim();
+}
+
 const YOUTUBE_REGEX =
     /^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*/;
 const YOUTUBE_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
