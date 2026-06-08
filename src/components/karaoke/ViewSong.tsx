@@ -326,6 +326,13 @@ export function ViewSong() {
                                 {nextSong.title}
                             </NavbarHeading>
                             <NavbarDivider />
+                            {songQueue.length > 1 && (
+                                <span className="subdued">
+                                    {" "}
+                                    ({songQueue.length} Queued)
+                                </span>
+                            )}
+                            <NavbarDivider />
                             <Button
                                 icon="arrow-right"
                                 onClick={() => {

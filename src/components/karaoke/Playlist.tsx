@@ -38,7 +38,17 @@ export function Playlist() {
                 </SectionCard>
             </Section>
             <Section
-                title="Up Next"
+                title={
+                    <React.Fragment>
+                        Up Next
+                        {songQueue.length > 1 && (
+                            <span className="subdued">
+                                {" "}
+                                ({songQueue.length} Queued)
+                            </span>
+                        )}
+                    </React.Fragment>
+                }
                 rightElement={
                     <Button
                         variant="minimal"
@@ -46,6 +56,7 @@ export function Playlist() {
                         onClick={() => {
                             dispatch(karaokeActions.shuffleQueue());
                         }}
+                        title="Shuffle the upcoming songs, but leave the next song unchanged"
                     >
                         Shuffle
                     </Button>
