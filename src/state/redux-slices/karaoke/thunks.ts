@@ -289,11 +289,7 @@ export const karaokeThunks = {
             if (!hostingAddress) {
                 throw new Error("Hosting address not set");
             }
-            // Upload goes to the tiny_http upload server on port+2 (astra deadlocks on large bodies)
-            const uploadUrl = new URL(hostingAddress);
-            uploadUrl.port = String(Number(uploadUrl.port) + 2);
-            uploadUrl.pathname = "/upload-file";
-            const resp = await fetch(uploadUrl.toString(), {
+            const resp = await fetch(hostingAddress + "/upload-file", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ filename: file.name, data }),

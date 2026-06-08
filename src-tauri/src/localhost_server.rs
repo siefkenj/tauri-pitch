@@ -4,20 +4,29 @@
 
 //! Expose your apps assets through a localhost server instead of the default custom protocol.
 //!
-//! **Note: This plugins brings considerable security risks and you should only use it if you know what your are doing. If in doubt, use the default custom protocol implementation.**
+//! **Note: This plugin brings considerable security risks and you should only use it if you know what you are doing. If in doubt, use the default custom protocol implementation.**
 
 use std::{
     collections::HashMap,
-    fs::{self},
-    sync::Mutex,
+    convert::Infallible,
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
-use astra::ResponseBuilder;
-use http::Method;
+// Brings .encode()/.decode() into scope on the STANDARD engine value.
+use base64::Engine as _;
+use serde::Deserialize;
 use tauri::{
     Manager, Runtime,
     plugin::{Builder as PluginBuilder, TauriPlugin},
 };
+use warp::Filter;
+
+#[derive(Deserialize)]
+struct UploadRequest {
+    filename: String,
+    data: String,
+}
 
 pub struct Builder {
     port: u16,
@@ -30,7 +39,7 @@ impl Builder {
     }
 
     #[allow(unused)]
-    // Change the host the plugin binds to. Defaults to `localhost`.
+    // Change the host the plugin binds to. Defaults to `0.0.0.0`.
     pub fn host<H: Into<String>>(mut self, host: H) -> Self {
         self.host = Some(host.into());
         self
@@ -38,198 +47,197 @@ impl Builder {
 
     pub fn build<R: Runtime>(self) -> TauriPlugin<R> {
         let port = self.port;
-        let host = self.host.unwrap_or("0.0.0.0".to_string());
+        let host_str = self.host.unwrap_or_else(|| "0.0.0.0".to_string());
 
         PluginBuilder::new("localhost")
             .setup(move |app, _api| {
                 let app_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
-                let youtube_downloads_dir = app_dir.join("youtube_downloads");
+                let youtube_downloads_dir = Arc::new(app_dir.join("youtube_downloads"));
+                let video_file_map =
+                    Arc::new(Mutex::new(populate_hash_map(&youtube_downloads_dir)));
+                let app_handle = app.app_handle().clone();
 
+                // Capture the asset resolver as a closure so we don't need to name its type.
                 let asset_resolver = app.asset_resolver();
-                let app_for_closure = app.clone();
-                std::thread::spawn(move || {
-                    // Set up a hashmap to quickly find files in the youtube_downloads directory.
-                    let video_file_map = Mutex::new(populate_hash_map(&youtube_downloads_dir));
+                let resolve_asset = Arc::new(move |path: String| asset_resolver.get(path));
 
-                    println!("Listening on localhost server http://{host}:{port}");
-                    astra::Server::bind(format!("{host}:{port}"))
-                        .serve(move |req: http::Request<astra::Body>, _info| {
-                            let path = Some(req.uri())
-                                .map(|uri| uri.path().into())
-                                .unwrap_or_else(|| req.uri().to_string());
-                            let path = if path == "/" {
-                                "index.html".to_string()
-                            } else {
-                                path
-                            };
+                let addr: std::net::SocketAddr = format!("{}:{}", host_str, port)
+                    .parse()
+                    .expect("Invalid server address");
 
-                            // If the path starts with `/videos/XXX`, we serve from a special directory.
-                            // We look for a file in the `youtube_downloads` directory whose file name starts with XXX and serve that.
-                            if path.starts_with("/videos/") {
-                                let video_id = path.trim_start_matches("/videos/");
+                println!("Listening on localhost server http://{}:{}", host_str, port);
 
-                                // If this is a post request, handle upload or YouTube download.
-                                if req.method() == &Method::POST {
-                                    // Read the body to get the youtube hash.
-                                    println!(
-                                        "Received request to download video with ID: {}",
-                                        video_id
-                                    );
-                                    let app = app_for_closure.clone();
-                                    let res = tauri::async_runtime::block_on(
-                                        crate::fetch_youtube::fetch_youtube(
-                                            app,
-                                            video_id.to_string(),
-                                        ),
-                                    );
-                                    return match res {
-                                        Ok(title) => {
-                                            ResponseBuilder::new()
-                                                .status(200)
-                                                .header("Content-Type", "text/plain")
-                                                // Add CORS headers
-                                                .header("Access-Control-Allow-Origin", "*")
-                                                .header("Access-Control-Allow-Methods", "POST")
-                                                .header(
-                                                    "Access-Control-Allow-Headers",
-                                                    "Content-Type",
-                                                )
-                                                .body(astra::Body::new(title))
-                                                .unwrap()
-                                        }
-                                        Err(err) => {
-                                            eprintln!(
-                                                "    Error starting video download for {}: {}",
-                                                video_id, err
-                                            );
-                                            ResponseBuilder::new()
-                                                .status(500)
-                                                .header("Content-Type", "text/plain")
-                                                // Add CORS headers
-                                                .header("Access-Control-Allow-Origin", "*")
-                                                .header("Access-Control-Allow-Methods", "POST")
-                                                .header(
-                                                    "Access-Control-Allow-Headers",
-                                                    "Content-Type",
-                                                )
-                                                .body(astra::Body::new(format!(
-                                                    "Error starting video download: {}",
-                                                    err
-                                                )))
-                                                .unwrap()
-                                        }
-                                    };
-                                }
+                // The server address exposed to the frontend is the LAN IP, but the WebView loads
+                // from localhost — cross-origin. warp's cors() filter handles OPTIONS preflight
+                // automatically and adds Access-Control-Allow-* headers to every response.
+                let cors = warp::cors()
+                    .allow_any_origin()
+                    .allow_methods(vec!["GET", "POST", "OPTIONS"])
+                    .allow_headers(vec!["Content-Type"]);
 
-                                // If the video ID is in the map, we're ready to go. Otherwise,
-                                // we search for the file name and update the map.
-                                let file_name = {
-                                    let mut video_file_map = video_file_map.lock().unwrap();
-                                    video_file_map.get(video_id).cloned().or_else(|| {
-                                        // We didn't find the file in the map, so we search for it.
-                                        find_file_with_prefix(&youtube_downloads_dir, video_id).map(
-                                            |name| {
-                                                video_file_map
-                                                    .insert(video_id.to_string(), name.to_string());
-                                                name
-                                            },
-                                        )
-                                    })
-                                };
-                                // If we found a file name, we serve it.
-                                if let Some(file_name) = file_name {
-                                    let file_path = youtube_downloads_dir.join(&file_name);
-                                    if let Ok(asset) = fs::read(&file_path) {
-                                        println!("    Video file found: {}", &file_name);
-                                        // Check if we have requested a specific range of bytes.
-                                        if let Some(range) = req.headers().get("Range") {
-                                            // Parse the range header to get the start and end bytes.
-                                            if let Ok(range_str) = range.to_str() {
-                                                if let Some(range) =
-                                                    range_str.strip_prefix("bytes=")
-                                                {
-                                                    let parts: Vec<&str> =
-                                                        range.split('-').collect();
-                                                    if parts.len() == 2 {
-                                                        if let (Ok(start), Ok(end)) = (
-                                                            parts[0].parse::<usize>(),
-                                                            parts[1]
-                                                                .parse::<usize>()
-                                                                .or::<usize>(Ok(0)),
-                                                        ) {
-                                                            let end =
-                                                                if end == 0 || end >= asset.len() {
-                                                                    asset.len() - 1
-                                                                } else {
-                                                                    end
-                                                                };
-                                                            let chunk = asset[start..=end].to_vec();
-                                                            return ResponseBuilder::new()
-                                                                .status(206)
-                                                                .header("Content-Type", "video/mp4")
-                                                                // Allow video seeking
-                                                                .header("Accept-Ranges", "bytes")
-                                                                .header(
-                                                                    "Content-Range",
-                                                                    format!(
-                                                                        "bytes {}-{}/{}",
-                                                                        start,
-                                                                        end,
-                                                                        asset.len()
-                                                                    ),
-                                                                )
-                                                                .body(astra::Body::new(chunk))
-                                                                .unwrap();
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        return ResponseBuilder::new()
-                                            .status(200)
-                                            .header("Content-Type", "video/mp4")
-                                            // Allow video seeking
-                                            .header("Accept-Ranges", "bytes")
-                                            .body(astra::Body::new(asset))
-                                            .unwrap();
-                                    } else {
-                                        println!("    Video file not found: {}", &file_name);
-                                    }
-                                } else {
-                                    println!("    No video file found for ID: {}", video_id);
-                                }
-                                return ResponseBuilder::new()
-                                    .status(404)
-                                    .header("Content-Type", "text/plain")
-                                    .body(astra::Body::new("Video not found"))
-                                    .unwrap();
-                            }
-                            println!("Received request for path: '{}'", &path);
+                let routes = warp::any()
+                    .and(warp::method())
+                    .and(warp::path::full())
+                    .and(warp::header::headers_cloned())
+                    .and(warp::body::bytes())
+                    .and_then(move |method, path, headers, body: bytes::Bytes| {
+                        let app = app_handle.clone();
+                        let resolve = resolve_asset.clone();
+                        let map = video_file_map.clone();
+                        let dir = youtube_downloads_dir.clone();
+                        async move {
+                            Ok::<_, Infallible>(
+                                serve(method, path, headers, body.to_vec(), app, resolve, map, dir)
+                                    .await,
+                            )
+                        }
+                    })
+                    .with(cors);
 
-                            #[allow(unused_mut)]
-                            if let Some(mut asset) = asset_resolver.get(path.clone()) {
-                                println!("Received request; delivering asset: '{}' ", &path);
-                                return ResponseBuilder::new()
-                                    .status(200)
-                                    .header("Content-Type", asset.mime_type)
-                                    .body(astra::Body::new(asset.bytes))
-                                    .unwrap();
-                            } else {
-                                println!("Asset not found: '{}'", &path);
-                            }
-
-                            ResponseBuilder::new()
-                                .status(500)
-                                .header("Content-Type", "text/plain")
-                                .body(astra::Body::new("Server didn't understand what to process"))
-                                .unwrap()
-                        })
-                        .expect("Unable to spawn server");
+                tauri::async_runtime::spawn(async move {
+                    warp::serve(routes).run(addr).await;
                 });
+
                 Ok(())
             })
             .build()
     }
+}
+
+/// Build a plain-text HTTP response with the given status code.
+fn text_response(status: u16, body: impl Into<String>) -> warp::reply::Response {
+    warp::http::Response::builder()
+        .status(status)
+        .header("Content-Type", "text/plain")
+        .body(warp::hyper::Body::from(body.into()))
+        .unwrap()
+}
+
+/// Route a request to the upload handler, YouTube download trigger, video file server, or static asset resolver.
+async fn serve<R: Runtime>(
+    method: warp::http::Method,
+    path: warp::path::FullPath,
+    headers: warp::http::HeaderMap,
+    body: Vec<u8>,
+    app: tauri::AppHandle<R>,
+    resolve_asset: Arc<dyn Fn(String) -> Option<tauri::Asset> + Send + Sync>,
+    video_file_map: Arc<Mutex<HashMap<String, String>>>,
+    youtube_downloads_dir: Arc<PathBuf>,
+) -> warp::reply::Response {
+    let raw = path.as_str();
+    let path = if raw == "/" {
+        "index.html"
+    } else {
+        raw.trim_start_matches('/')
+    };
+
+    // POST /upload-file - file upload (body is already fully read by warp, no deadlock)
+    if path == "upload-file" && method == warp::http::Method::POST {
+        let req: UploadRequest = match serde_json::from_slice(&body) {
+            Ok(v) => v,
+            Err(e) => return text_response(400, format!("Invalid JSON: {}", e)),
+        };
+        let bytes = match base64::engine::general_purpose::STANDARD.decode(&req.data) {
+            Ok(v) => v,
+            Err(e) => return text_response(400, format!("Invalid base64: {}", e)),
+        };
+        return match crate::fetch_youtube::save_uploaded_song(app, bytes, req.filename).await {
+            Ok(info) => text_response(200, info.key),
+            Err(e) => text_response(500, format!("Upload failed: {}", e)),
+        };
+    }
+
+    // If the path starts with `/videos/XXX`, serve from the youtube_downloads directory.
+    // We look for a file whose name contains the video ID and serve that.
+    if let Some(video_id) = path.strip_prefix("videos/") {
+        let video_id = video_id.trim_end_matches('/');
+
+        // POST /videos/:id — trigger a YouTube download; the video ID is the YouTube hash.
+        if method == warp::http::Method::POST {
+            println!("Received request to download video with ID: {}", video_id);
+            return match crate::fetch_youtube::fetch_youtube(app, video_id.to_string()).await {
+                Ok(title) => text_response(200, title),
+                Err(e) => {
+                    eprintln!("Error starting video download for {}: {}", video_id, e);
+                    text_response(500, format!("Error starting video download: {}", e))
+                }
+            };
+        }
+
+        // GET /videos/:id — serve the video file with optional Range support for seeking.
+        // If the video ID is in the map, we're ready to go. Otherwise search the directory
+        // for a matching filename and add it to the map for next time.
+        let file_name = {
+            let mut map = video_file_map.lock().unwrap();
+            map.get(video_id).cloned().or_else(|| {
+                find_file_with_prefix(&youtube_downloads_dir, video_id).map(|name| {
+                    map.insert(video_id.to_string(), name.clone());
+                    name
+                })
+            })
+        };
+
+        if let Some(file_name) = file_name {
+            let file_path = youtube_downloads_dir.join(&file_name);
+            match tokio::fs::read(&file_path).await {
+                Ok(asset) => {
+                    println!("    Video file found: {}", &file_name);
+                    // Check if the client requested a specific byte range (needed for video seeking).
+                    if let Some(range_val) = headers.get("Range") {
+                        if let Ok(range_str) = range_val.to_str() {
+                            if let Some(range) = range_str.strip_prefix("bytes=") {
+                                let parts: Vec<&str> = range.split('-').collect();
+                                if parts.len() == 2 {
+                                    if let Ok(start) = parts[0].parse::<usize>() {
+                                        let end = parts[1]
+                                            .parse::<usize>()
+                                            .unwrap_or(0)
+                                            .min(asset.len().saturating_sub(1));
+                                        let end = if end == 0 { asset.len() - 1 } else { end };
+                                        let chunk = asset[start..=end].to_vec();
+                                        return warp::http::Response::builder()
+                                            .status(206)
+                                            .header("Content-Type", "video/mp4")
+                                            .header("Accept-Ranges", "bytes")
+                                            .header(
+                                                "Content-Range",
+                                                format!("bytes {}-{}/{}", start, end, asset.len()),
+                                            )
+                                            .body(warp::hyper::Body::from(chunk))
+                                            .unwrap();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return warp::http::Response::builder()
+                        .status(200)
+                        .header("Content-Type", "video/mp4")
+                        .header("Accept-Ranges", "bytes")
+                        .body(warp::hyper::Body::from(asset))
+                        .unwrap();
+                }
+                Err(_) => println!("    Video file not found: {}", &file_name),
+            }
+        } else {
+            println!("    No video file found for ID: {}", video_id);
+        }
+
+        return text_response(404, "Video not found");
+    }
+
+    // Static asset fallback
+    println!("Received request for path: '{}'", path);
+    if let Some(asset) = resolve_asset(path.to_string()) {
+        return warp::http::Response::builder()
+            .status(200)
+            .header("Content-Type", asset.mime_type)
+            .body(warp::hyper::Body::from(asset.bytes.to_vec()))
+            .unwrap();
+    }
+    println!("Asset not found: '{}'", path);
+
+    text_response(500, "Server didn't understand what to process")
 }
 
 /// Read through all files in `root_dir`. The file names should be of the form `XXX.*.mp4` where `XXX` is the video ID.
@@ -259,7 +267,7 @@ fn populate_hash_map(root_dir: &std::path::Path) -> HashMap<String, String> {
 fn find_file_with_prefix(dir: &std::path::Path, prefix: &str) -> Option<String> {
     let suffix_mp4 = format!("|{}.mp4", prefix);
     let suffix_webm = format!("|{}.webm", prefix);
-    let prefix = format!("{}.", prefix);
+    let prefix_dot = format!("{}.", prefix);
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -267,7 +275,7 @@ fn find_file_with_prefix(dir: &std::path::Path, prefix: &str) -> Option<String> 
                 if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
                     if file_name.ends_with(&suffix_mp4)
                         || file_name.ends_with(&suffix_webm)
-                        || (file_name.starts_with(&prefix)
+                        || (file_name.starts_with(&prefix_dot)
                             && (file_name.ends_with(".mp4") || file_name.ends_with(".webm")))
                     {
                         return Some(file_name.to_string());
