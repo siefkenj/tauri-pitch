@@ -29,17 +29,26 @@ struct UploadRequest {
 }
 
 pub struct Builder {
+    /// Plain HTTP port.
     port: u16,
+    /// TLS (HTTPS/WSS) port.
+    https_port: u16,
+    /// Bind address; defaults to `0.0.0.0`.
     host: Option<String>,
 }
 
 impl Builder {
-    pub fn new(port: u16) -> Self {
-        Self { port, host: None }
+    /// Creates a new [`Builder`]. `port` is the plain HTTP port; `https_port` is the TLS port.
+    /// Both ports bind to the same host and serve identical routes.
+    pub fn new(port: u16, https_port: u16) -> Self {
+        Self {
+            port,
+            https_port,
+            host: None,
+        }
     }
 
-    #[allow(unused)]
-    // Change the host the plugin binds to. Defaults to `0.0.0.0`.
+    /// Change the host the plugin binds to. Defaults to `0.0.0.0`.
     pub fn host<H: Into<String>>(mut self, host: H) -> Self {
         self.host = Some(host.into());
         self
@@ -47,11 +56,38 @@ impl Builder {
 
     pub fn build<R: Runtime>(self) -> TauriPlugin<R> {
         let port = self.port;
+        let https_port = self.https_port;
         let host_str = self.host.unwrap_or_else(|| "0.0.0.0".to_string());
 
         PluginBuilder::new("localhost")
             .setup(move |app, _api| {
                 let app_dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
+
+                // Load cert/key from disk, or generate and persist them on first run.
+                let tls_dir = app_dir.join("tls");
+                let cert_path = tls_dir.join("cert.pem");
+                let key_path = tls_dir.join("key.pem");
+                let (cert_pem, key_pem) = if cert_path.exists() && key_path.exists() {
+                    let cert = std::fs::read(&cert_path).map_err(|e| e.to_string())?;
+                    let key = std::fs::read(&key_path).map_err(|e| e.to_string())?;
+                    (cert, key)
+                } else {
+                    let mut sans = vec!["localhost".to_string(), "127.0.0.1".to_string()];
+                    if let Ok(lan_ip) = local_ip_address::local_ip() {
+                        let s = lan_ip.to_string();
+                        if s != "127.0.0.1" {
+                            sans.push(s);
+                        }
+                    }
+                    let rcgen::CertifiedKey { cert, key_pair } =
+                        rcgen::generate_simple_self_signed(sans).map_err(|e| e.to_string())?;
+                    let cert_bytes = cert.pem().into_bytes();
+                    let key_bytes = key_pair.serialize_pem().into_bytes();
+                    std::fs::create_dir_all(&tls_dir).map_err(|e| e.to_string())?;
+                    std::fs::write(&cert_path, &cert_bytes).map_err(|e| e.to_string())?;
+                    std::fs::write(&key_path, &key_bytes).map_err(|e| e.to_string())?;
+                    (cert_bytes, key_bytes)
+                };
                 let youtube_downloads_dir = Arc::new(app_dir.join("youtube_downloads"));
                 let video_file_map =
                     Arc::new(Mutex::new(populate_hash_map(&youtube_downloads_dir)));
@@ -65,7 +101,8 @@ impl Builder {
                     .parse()
                     .expect("Invalid server address");
 
-                println!("Listening on localhost server http://{}:{}", host_str, port);
+                println!("Listening on http://{}:{}", host_str, port);
+                println!("Listening on https://{}:{}", host_str, https_port);
 
                 // The server address exposed to the frontend is the LAN IP, but the WebView loads
                 // from localhost — cross-origin. warp's cors() filter handles OPTIONS preflight
@@ -95,7 +132,19 @@ impl Builder {
                     .with(cors);
 
                 tauri::async_runtime::spawn(async move {
-                    warp::serve(routes).run(addr).await;
+                    let ws_filter = crate::yrs_server::make_filter().await;
+                    let all_routes = ws_filter.or(routes);
+                    let http = warp::serve(all_routes.clone()).run(addr);
+
+                    let https_addr: std::net::SocketAddr = format!("{}:{}", host_str, https_port)
+                        .parse()
+                        .expect("Invalid HTTPS address");
+                    let https = warp::serve(all_routes)
+                        .tls()
+                        .cert(cert_pem)
+                        .key(key_pem)
+                        .run(https_addr);
+                    tokio::join!(http, https);
                 });
 
                 Ok(())

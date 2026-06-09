@@ -19,6 +19,8 @@ import {
 import { hostingAddressSelector } from "../../state/redux-slices/core";
 import { formatSongName } from "../../utils";
 import React from "react";
+import type { SoundTouchNode } from "@soundtouchjs/audio-worklet";
+import soundTouchProcessorUrl from "@soundtouchjs/audio-worklet/processor?url";
 
 export function ViewSong() {
     const dispatch = useAppDispatch();
@@ -26,16 +28,23 @@ export function ViewSong() {
     const currentlyPlaying = useAppSelector(currentlyPlayingSelector);
     const songQueue = useAppSelector(songQueueSelector);
     const nextSong: SongInfo | undefined = songQueue[0];
-    const videoRef = React.useRef<HTMLVideoElement>(null);
+    const videoRef = React.useRef<HTMLVideoElement | null>(null);
     const [playbackRate, _setPlaybackRate] = React.useState(1);
+    const [pitchSemitones, _setPitchSemitones] = React.useState(0);
     const [playbackProgress, setPlaybackProgress] = React.useState({
         percent: 0,
         remainingTime: 0,
     });
+    const [audioSetupStatus, setAudioSetupStatus] = React.useState<
+        "idle" | "setting-up" | "ready" | "failed" | "unsupported"
+    >("idle");
     const audioContextRef = React.useRef<AudioContext | null>(null);
     const sourceNodeRef = React.useRef<MediaElementAudioSourceNode | null>(
         null,
     );
+    const soundTouchNodeRef = React.useRef<SoundTouchNode | null>(null);
+    const audioSetupDoneRef = React.useRef(false);
+
     const incrementPlaybackRate = React.useCallback(
         ({ inc, value }: { inc?: number; value?: number }) => {
             if (videoRef.current) {
@@ -55,6 +64,80 @@ export function ViewSong() {
         },
         [],
     );
+
+    const adjustPitch = React.useCallback(
+        ({ inc, value }: { inc?: number; value?: number }) => {
+            _setPitchSemitones((prev) => {
+                let semitones = prev;
+                if (inc != null) {
+                    semitones += inc;
+                }
+                if (value != null) {
+                    semitones = value;
+                }
+                semitones = Math.round(semitones);
+                if (soundTouchNodeRef.current) {
+                    soundTouchNodeRef.current.pitchSemitones.value = semitones;
+                }
+                return semitones;
+            });
+        },
+        [],
+    );
+
+    const setupAudio = React.useCallback(async (el: HTMLVideoElement) => {
+        if (audioSetupDoneRef.current) {
+            return;
+        }
+        audioSetupDoneRef.current = true;
+        setAudioSetupStatus("setting-up");
+
+        if (typeof AudioWorkletNode === "undefined") {
+            setAudioSetupStatus("unsupported");
+            return;
+        }
+
+        try {
+            const { SoundTouchNode: SoundTouchNodeClass } =
+                await import("@soundtouchjs/audio-worklet");
+            const ctx = new AudioContext();
+            audioContextRef.current = ctx;
+
+            await SoundTouchNodeClass.register(ctx, soundTouchProcessorUrl);
+
+            const source = ctx.createMediaElementSource(el);
+            sourceNodeRef.current = source;
+
+            const stNode = new SoundTouchNodeClass({ context: ctx });
+            soundTouchNodeRef.current = stNode;
+
+            source.connect(stNode);
+            stNode.connect(ctx.destination);
+            setAudioSetupStatus("ready");
+        } catch (err) {
+            console.error("[SoundTouch] Setup failed:", err);
+            audioSetupDoneRef.current = false;
+            setAudioSetupStatus("failed");
+        }
+    }, []);
+
+    const videoCallbackRef = React.useCallback(
+        (el: HTMLVideoElement | null) => {
+            videoRef.current = el;
+            if (el) {
+                setupAudio(el);
+            }
+        },
+        [setupAudio],
+    );
+
+    // Fallback: if the callback ref misfired, run setup when currentlyPlaying
+    // becomes non-null and the video element is already in the DOM.
+    React.useEffect(() => {
+        if (videoRef.current) {
+            setupAudio(videoRef.current);
+        }
+    }, [currentlyPlaying, setupAudio]);
 
     // // Setup audio context and source node when video element is available
     // React.useEffect(() => {
@@ -247,10 +330,14 @@ export function ViewSong() {
                 {currentlyPlaying ? (
                     <>
                         <video
-                            ref={videoRef}
+                            ref={videoCallbackRef}
                             src={`${hostingAddress}/videos/${currentlyPlaying?.key}`}
                             onKeyDown={handleKeyDown}
                             onKeyUp={handleKeyUp}
+                            onPlay={() => {
+                                // Resume AudioContext if suspended due to browser autoplay policy
+                                audioContextRef.current?.resume();
+                            }}
                             controls
                             autoPlay
                             disablePictureInPicture
@@ -397,6 +484,35 @@ export function ViewSong() {
                         <Button
                             variant="minimal"
                             onClick={() => incrementPlaybackRate({ inc: 0.1 })}
+                            icon="plus"
+                        />
+                    </div>
+                    <div className="karaoke-playback-rate">
+                        Key
+                        <Button
+                            variant="minimal"
+                            onClick={() => adjustPitch({ inc: -1 })}
+                            icon="minus"
+                        />
+                        <Button onClick={() => adjustPitch({ value: 0 })}>
+                            {audioSetupStatus === "ready" ? (
+                                <>
+                                    {pitchSemitones > 0 ? "+" : ""}
+                                    {pitchSemitones} st
+                                </>
+                            ) : audioSetupStatus === "setting-up" ? (
+                                "…"
+                            ) : audioSetupStatus === "unsupported" ? (
+                                "N/A"
+                            ) : audioSetupStatus === "failed" ? (
+                                "err"
+                            ) : (
+                                "0 st"
+                            )}
+                        </Button>
+                        <Button
+                            variant="minimal"
+                            onClick={() => adjustPitch({ inc: 1 })}
                             icon="plus"
                         />
                     </div>

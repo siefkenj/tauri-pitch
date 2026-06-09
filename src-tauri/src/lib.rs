@@ -14,34 +14,31 @@ mod yrs_server;
 #[allow(unused)]
 struct AppData {
     http_port: u16,
-    websocket_port: u16,
+    https_port: u16,
 }
 
 //#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let first_open_port = if port_selector::is_free(9527) {
+    let http_port = if port_selector::is_free(9527) {
         9527
     } else {
-        // Pick a random port if 9527 is not free
         port_selector::select_free_port(Selector {
             port_range: (9527, 9627),
             ..Default::default()
         })
         .expect("Could not find a free port")
     };
-    // Check the next port, since it will be used for the WebSocket server
-    let second_open_port = {
-        let guess = first_open_port + 1;
-        if port_selector::is_free(guess) {
-            guess
-        } else {
-            panic!("Could not find two sequential free ports");
-        }
-    };
+    // Claim the next port for the HTTPS server.
+    let https_port = http_port + 1;
+    assert!(
+        port_selector::is_free(https_port),
+        "HTTPS port {} is already in use",
+        https_port
+    );
 
     let app_data = AppData {
-        http_port: first_open_port,
-        websocket_port: second_open_port,
+        http_port,
+        https_port,
     };
 
     // Build the Tauri App
@@ -50,20 +47,11 @@ pub fn run() {
             let app_data = app_data.clone();
             move |app| {
                 app.manage(Mutex::new(app_data.clone()));
-                // Spawn a thread to run the Yrs server
-                std::thread::spawn(move || {
-                    let rt = tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                        .expect("Failed to create Tokio runtime");
-                    rt.block_on(yrs_server::start(app_data.websocket_port));
-                });
-
                 Ok(())
             }
         })
         .plugin(
-            localhost_server::Builder::new(app_data.http_port)
+            localhost_server::Builder::new(app_data.http_port, app_data.https_port)
                 .host("0.0.0.0")
                 .build(),
         )

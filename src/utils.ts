@@ -5,19 +5,16 @@ import { SongInfo } from "./state/redux-slices/karaoke";
  * Defaults to using `window.location.host` if no host is provided.
  */
 export function getWebSocketURL(host = window.location.host): string {
-    // If `host` starts with a protocol, we need to strip it.
+    // Preserve the protocol from the passed-in host (or fall back to the page's own protocol).
+    let protocol = window.location.protocol;
     if (/\w+:\/\//.test(host)) {
         const url = new URL(host);
+        protocol = url.protocol;
         host = url.host;
     }
-    // Our websocket address is our current address with the port number increased by 1.
+    // The WebSocket server runs on the same port as the HTTP(S) server.
     const wsAddress = new URL("http://" + host);
-    wsAddress.port = (parseInt(wsAddress.port) + 1).toString();
-    // If the port is 1421, that means we're running on the dev server and we should use 9528 instead.
-    if (wsAddress.port === "1421") {
-        wsAddress.port = "9528";
-    }
-    wsAddress.protocol = wsAddress.protocol === "https:" ? "wss:" : "ws:";
+    wsAddress.protocol = protocol === "https:" ? "wss:" : "ws:";
     return wsAddress.toString();
 }
 
