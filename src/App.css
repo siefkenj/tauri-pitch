@@ -278,3 +278,37 @@ div[role="tablist"] {
     margin-top: 10px;
     margin-bottom: 10px;
 }
+
+.speed-and-pitch-buttons {
+    display: flex;
+    gap: 1px;
+    margin-left: auto;
+    padding-left: 4px;
+
+    .bp6-button {
+        min-width: 4.5em;
+        justify-content: center;
+    }
+    .speed-button {
+        min-width: 4em;
+        font-size: 0.9em;
+        .bp6-button-text {
+            width: 2em;
+        }
+    }
+}
+
+.slider-popover-content {
+    padding: 20px 12px 12px;
+    /* height: 220px; */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.pitch-symbol {
+    font-style: normal;
+    font-size: 1em;
+    line-height: 1;
+}

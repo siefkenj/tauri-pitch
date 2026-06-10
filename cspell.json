@@ -19,6 +19,7 @@
         "patchelf",
         "rfind",
         "rsplit",
+        "soundtouchjs",
         "swatinem",
         "tauri",
         "webkitgtk",

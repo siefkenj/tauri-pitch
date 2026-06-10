@@ -10,7 +10,7 @@ type PitchSetup = {
     analyser?: AnalyserNode;
     gainNode?: GainNode;
     audioContext: AudioContext;
-    buffer: Float32Array;
+    buffer: Float32Array<ArrayBuffer>;
 };
 
 /**

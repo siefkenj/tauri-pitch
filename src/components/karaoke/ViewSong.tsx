@@ -6,7 +6,9 @@ import {
     NavbarGroup,
     NavbarHeading,
     NonIdealState,
+    PopoverNext,
     ProgressBar,
+    Slider,
     useHotkeys,
 } from "@blueprintjs/core";
 import { useAppDispatch, useAppSelector } from "../../state/hooks";
@@ -109,6 +111,10 @@ export function ViewSong() {
             sourceNodeRef.current = source;
 
             const stNode = new SoundTouchNodeClass({ context: ctx });
+            // Exhaustive seek for better pitch-shift accuracy (more CPU, worth it).
+            stNode.setStretchParameters({ quickSeek: false });
+            // Max kernel width for highest-quality interpolation (default is 4).
+            stNode.setInterpolationStrategyParams({ zeroCrossings: 8 });
             soundTouchNodeRef.current = stNode;
 
             source.connect(stNode);
@@ -138,6 +144,15 @@ export function ViewSong() {
             setupAudio(videoRef.current);
         }
     }, [currentlyPlaying, setupAudio]);
+
+    // Reset speed and pitch each time a new song starts.
+    React.useEffect(() => {
+        if (!currentlyPlaying) {
+            return;
+        }
+        incrementPlaybackRate({ value: 1 });
+        adjustPitch({ value: 0 });
+    }, [currentlyPlaying, incrementPlaybackRate, adjustPitch]);
 
     // // Setup audio context and source node when video element is available
     // React.useEffect(() => {
@@ -469,32 +484,113 @@ export function ViewSong() {
                             />
                         </>
                     )}
-                    <div className="karaoke-playback-rate">
-                        Speed
-                        <Button
-                            variant="minimal"
-                            onClick={() => incrementPlaybackRate({ inc: -0.1 })}
-                            icon="minus"
-                        />
-                        <Button
-                            onClick={() => incrementPlaybackRate({ value: 1 })}
+                    <NavbarGroup
+                        align="right"
+                        className="speed-and-pitch-buttons"
+                    >
+                        <PopoverNext
+                            placement="top"
+                            onOpened={(node) => {
+                                node.querySelector<HTMLElement>(
+                                    "[role=slider]",
+                                )?.focus();
+                            }}
+                            content={
+                                <div className="slider-popover-content">
+                                    <Slider
+                                        vertical
+                                        min={0.1}
+                                        max={2.0}
+                                        stepSize={0.1}
+                                        value={playbackRate}
+                                        onChange={(v) =>
+                                            incrementPlaybackRate({ value: v })
+                                        }
+                                        labelStepSize={0.5}
+                                        labelRenderer={(v, opts) =>
+                                            opts?.isHandleTooltip
+                                                ? (null as any)
+                                                : `${v.toFixed(1)}×`
+                                        }
+                                    />
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        onClick={() =>
+                                            incrementPlaybackRate({ value: 1 })
+                                        }
+                                    >
+                                        Reset
+                                    </Button>
+                                </div>
+                            }
                         >
-                            {playbackRate.toFixed(1)} ×
-                        </Button>
-                        <Button
-                            variant="minimal"
-                            onClick={() => incrementPlaybackRate({ inc: 0.1 })}
-                            icon="plus"
-                        />
-                    </div>
-                    <div className="karaoke-playback-rate">
-                        Key
-                        <Button
-                            variant="minimal"
-                            onClick={() => adjustPitch({ inc: -1 })}
-                            icon="minus"
-                        />
-                        <Button onClick={() => adjustPitch({ value: 0 })}>
+                            <Button
+                                variant="minimal"
+                                icon="fast-forward"
+                                className="speed-button"
+                            >
+                                {playbackRate.toFixed(1)}×
+                            </Button>
+                        </PopoverNext>
+                        <PopoverNext
+                            placement="top"
+                            onOpened={(node) => {
+                                node.querySelector<HTMLElement>(
+                                    "[role=slider]",
+                                )?.focus();
+                            }}
+                            content={
+                                <div className="slider-popover-content">
+                                    <Slider
+                                        vertical
+                                        min={-6}
+                                        max={6}
+                                        stepSize={1}
+                                        value={pitchSemitones}
+                                        onChange={(v) =>
+                                            adjustPitch({ value: v })
+                                        }
+                                        labelStepSize={3}
+                                        labelRenderer={(v, opts) =>
+                                            opts?.isHandleTooltip
+                                                ? (null as any)
+                                                : `${v > 0 ? "+" : ""}${v} st`
+                                        }
+                                        disabled={audioSetupStatus !== "ready"}
+                                    />
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        disabled={audioSetupStatus !== "ready"}
+                                        onClick={() =>
+                                            adjustPitch({ value: 0 })
+                                        }
+                                    >
+                                        Reset
+                                    </Button>
+                                </div>
+                            }
+                        >
+                            <Button
+                                variant="minimal"
+                                endIcon={
+                                    pitchSemitones > 0
+                                        ? "caret-up"
+                                        : pitchSemitones < 0
+                                          ? "caret-down"
+                                          : "double-caret-vertical"
+                                }
+                                title="Adjust Pitch"
+                                disabled={audioSetupStatus === "unsupported"}
+                            >
+                                <span className="pitch-symbol">
+                                    {pitchSemitones >= 0 ? "♯" : "♭"}
+                                    {pitchSemitones > 0 || pitchSemitones < 0
+                                        ? Math.abs(pitchSemitones)
+                                        : ""}
+                                </span>
+                                {/* Key:{" "}
                             {audioSetupStatus === "ready" ? (
                                 <>
                                     {pitchSemitones > 0 ? "+" : ""}
@@ -508,14 +604,10 @@ export function ViewSong() {
                                 "err"
                             ) : (
                                 "0 st"
-                            )}
-                        </Button>
-                        <Button
-                            variant="minimal"
-                            onClick={() => adjustPitch({ inc: 1 })}
-                            icon="plus"
-                        />
-                    </div>
+                            )} */}
+                            </Button>
+                        </PopoverNext>
+                    </NavbarGroup>
                 </NavbarGroup>
             </Navbar>
         </div>

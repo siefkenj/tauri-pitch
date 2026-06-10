@@ -168,7 +168,7 @@ const CircleChartBackground = React.memo(function CircleChartBackground({
     // The note labels are rendered in divs so we can use CSS to style them.
     // We need to store refs to all these divs so we can dynamically compute their
     // sizes.
-    const noteRefs = React.useRef<React.RefObject<HTMLDivElement>[]>([
+    const noteRefs = React.useRef<React.RefObject<HTMLDivElement | null>[]>([
         { current: null },
         { current: null },
         { current: null },
