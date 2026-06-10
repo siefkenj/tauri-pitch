@@ -291,7 +291,7 @@ div[role="tablist"] {
     }
     .speed-button {
         min-width: 4em;
-        font-size: 0.9em;
+        font-size: 8pt;
         .bp6-button-text {
             width: 2em;
         }
@@ -311,4 +311,7 @@ div[role="tablist"] {
     font-style: normal;
     font-size: 1em;
     line-height: 1;
+}
+.queue-count {
+    font-size: 10pt !important;
 }

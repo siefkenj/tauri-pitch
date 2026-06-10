@@ -429,7 +429,7 @@ export function ViewSong() {
                             </NavbarHeading>
                             <NavbarDivider />
                             {songQueue.length > 1 && (
-                                <span className="subdued">
+                                <span className="subdued queue-count">
                                     {" "}
                                     ({songQueue.length} Queued)
                                 </span>
@@ -503,6 +503,7 @@ export function ViewSong() {
                                         max={2.0}
                                         stepSize={0.1}
                                         value={playbackRate}
+                                        initialValue={1}
                                         onChange={(v) =>
                                             incrementPlaybackRate({ value: v })
                                         }
@@ -512,10 +513,12 @@ export function ViewSong() {
                                                 ? (null as any)
                                                 : `${v.toFixed(1)}×`
                                         }
+                                        disabled={!currentlyPlaying}
                                     />
                                     <Button
                                         variant="outlined"
                                         size="small"
+                                        disabled={!currentlyPlaying}
                                         onClick={() =>
                                             incrementPlaybackRate({ value: 1 })
                                         }
@@ -529,6 +532,7 @@ export function ViewSong() {
                                 variant="minimal"
                                 icon="fast-forward"
                                 className="speed-button"
+                                title="Adjust Playback Speed"
                             >
                                 {playbackRate.toFixed(1)}×
                             </Button>
