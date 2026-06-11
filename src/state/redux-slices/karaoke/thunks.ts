@@ -250,6 +250,37 @@ export const karaokeThunks = {
         },
     ),
     /**
+     * Move a song in the queue from one index to another.
+     */
+    moveQueueItem: createLoggingAsyncThunk(
+        "karaoke/moveQueueItem",
+        async (
+            { fromIndex, toIndex }: { fromIndex: number; toIndex: number },
+            {},
+        ) => {
+            if (!doc) {
+                throw new Error("Yjs document not initialized");
+            }
+            if (fromIndex === toIndex) {
+                return;
+            }
+            const songQueue = doc.getArray<SongInfo>("song-queue");
+            if (
+                fromIndex < 0 ||
+                fromIndex >= songQueue.length ||
+                toIndex < 0 ||
+                toIndex >= songQueue.length
+            ) {
+                return;
+            }
+            const song = songQueue.get(fromIndex);
+            doc.transact(() => {
+                songQueue.delete(fromIndex, 1);
+                songQueue.insert(toIndex, [song]);
+            });
+        },
+    ),
+    /**
      * Shuffle all songs in the queue while keeping the first song in place.
      */
     shuffleQueue: createLoggingAsyncThunk(

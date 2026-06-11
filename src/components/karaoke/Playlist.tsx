@@ -127,10 +127,12 @@ export function Playlist() {
                             if (fromIndex === toIndex) {
                                 return;
                             }
-                            const newQueue = [...songQueue];
-                            const [item] = newQueue.splice(fromIndex, 1);
-                            newQueue.splice(toIndex, 0, item);
-                            dispatch(karaokeActions._setQueue(newQueue));
+                            dispatch(
+                                karaokeActions.moveQueueItem({
+                                    fromIndex,
+                                    toIndex,
+                                }),
+                            );
                         }}
                     >
                         <CardList bordered={false} compact>
