@@ -1,5 +1,6 @@
 import {
     Button,
+    Callout,
     HotkeyConfig,
     Navbar,
     NavbarDivider,
@@ -18,7 +19,10 @@ import {
     karaokeActions,
     songQueueSelector,
 } from "../../state/redux-slices/karaoke";
-import { hostingAddressSelector } from "../../state/redux-slices/core";
+import {
+    hostingAddressSelector,
+    httpsOnlyFeaturesDisabledSelector,
+} from "../../state/redux-slices/core";
 import { formatSongName } from "../../utils";
 import React from "react";
 import type { SoundTouchNode } from "@soundtouchjs/audio-worklet";
@@ -27,6 +31,9 @@ import soundTouchProcessorUrl from "@soundtouchjs/audio-worklet/processor?url";
 export function ViewSong() {
     const dispatch = useAppDispatch();
     const hostingAddress = useAppSelector(hostingAddressSelector);
+    const httpsOnlyFeaturesDisabled = useAppSelector(
+        httpsOnlyFeaturesDisabledSelector,
+    );
     const currentlyPlaying = useAppSelector(currentlyPlayingSelector);
     const songQueue = useAppSelector(songQueueSelector);
     const nextSong: SongInfo | undefined = songQueue[0];
@@ -546,33 +553,48 @@ export function ViewSong() {
                             }}
                             content={
                                 <div className="slider-popover-content">
-                                    <Slider
-                                        vertical
-                                        min={-6}
-                                        max={6}
-                                        stepSize={1}
-                                        value={pitchSemitones}
-                                        onChange={(v) =>
-                                            adjustPitch({ value: v })
-                                        }
-                                        labelStepSize={3}
-                                        labelRenderer={(v, opts) =>
-                                            opts?.isHandleTooltip
-                                                ? (null as any)
-                                                : `${v > 0 ? "+" : ""}${v} st`
-                                        }
-                                        disabled={audioSetupStatus !== "ready"}
-                                    />
-                                    <Button
-                                        variant="outlined"
-                                        size="small"
-                                        disabled={audioSetupStatus !== "ready"}
-                                        onClick={() =>
-                                            adjustPitch({ value: 0 })
-                                        }
-                                    >
-                                        Reset
-                                    </Button>
+                                    {httpsOnlyFeaturesDisabled ? (
+                                        <Callout
+                                            intent="warning"
+                                            style={{ maxWidth: 260 }}
+                                        >
+                                            {httpsOnlyFeaturesDisabled}
+                                        </Callout>
+                                    ) : (
+                                        <>
+                                            <Slider
+                                                vertical
+                                                min={-6}
+                                                max={6}
+                                                stepSize={1}
+                                                value={pitchSemitones}
+                                                onChange={(v) =>
+                                                    adjustPitch({ value: v })
+                                                }
+                                                labelStepSize={3}
+                                                labelRenderer={(v, opts) =>
+                                                    opts?.isHandleTooltip
+                                                        ? (null as any)
+                                                        : `${v > 0 ? "+" : ""}${v} st`
+                                                }
+                                                disabled={
+                                                    audioSetupStatus !== "ready"
+                                                }
+                                            />
+                                            <Button
+                                                variant="outlined"
+                                                size="small"
+                                                disabled={
+                                                    audioSetupStatus !== "ready"
+                                                }
+                                                onClick={() =>
+                                                    adjustPitch({ value: 0 })
+                                                }
+                                            >
+                                                Reset
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             }
                         >
@@ -586,7 +608,7 @@ export function ViewSong() {
                                           : "double-caret-vertical"
                                 }
                                 title="Adjust Pitch"
-                                disabled={audioSetupStatus === "unsupported"}
+                                // disabled={audioSetupStatus === "unsupported"}
                             >
                                 <span className="pitch-symbol">
                                     {pitchSemitones >= 0 ? "♯" : "♭"}

@@ -62,7 +62,7 @@ const coreSlice = createSlice({
     reducers: {
         _setPitchDetectionAlgorithm: (
             state,
-            action: PayloadAction<"autocorrelation" | "mcleod">
+            action: PayloadAction<"autocorrelation" | "mcleod">,
         ) => {
             state.pitchDetectionAlgorithm = action.payload;
         },
@@ -77,7 +77,7 @@ const coreSlice = createSlice({
         },
         setCurrentPitch: (
             state,
-            action: PayloadAction<{ pitch: number; clarity: number }>
+            action: PayloadAction<{ pitch: number; clarity: number }>,
         ) => {
             state.currentPitch = action.payload;
         },
@@ -93,7 +93,7 @@ const coreSlice = createSlice({
         },
         _setHostingAddress: (
             state,
-            action: PayloadAction<string | undefined>
+            action: PayloadAction<string | undefined>,
         ) => {
             state.hostingAddress = action.payload;
         },
@@ -126,3 +126,29 @@ export const appRuntimeSelector = (state: RootState) =>
 
 export const hostingAddressSelector = (state: RootState) =>
     selfSelector(state).hostingAddress;
+
+/**
+ * Returns null when HTTPS-only features (microphone, AudioWorklet) are available,
+ * or a human-readable message (including the HTTPS URL) when they are not.
+ *
+ * Features are available when:
+ *   - the app is running inside Tauri, or
+ *   - the page is already being served over HTTPS.
+ */
+export const httpsOnlyFeaturesDisabledSelector = (
+    state: RootState,
+): string | null => {
+    const { appRuntime, hostingAddress } = selfSelector(state);
+    if (appRuntime === "tauri" || window.location.protocol === "https:") {
+        return null;
+    }
+    try {
+        const url = new URL(hostingAddress ?? window.location.origin);
+        url.protocol = "https:";
+        url.port = String(Number(url.port) + 1);
+        const httpsUrl = url.toString().replace(/\/$/, "");
+        return `This feature requires HTTPS. Please access the app at ${httpsUrl}`;
+    } catch {
+        return "This feature requires HTTPS.";
+    }
+};

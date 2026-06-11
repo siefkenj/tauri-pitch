@@ -12,8 +12,9 @@ import {
     clarityThresholdSelector,
     currentPitchSelector,
     hostingAddressSelector,
+    httpsOnlyFeaturesDisabledSelector,
 } from "./state/redux-slices/core";
-import { Button, Divider, HTMLSelect } from "@blueprintjs/core";
+import { Button, Callout, Divider, HTMLSelect } from "@blueprintjs/core";
 import { CircleChart } from "./components/circle-chart/circle-chat";
 import { Navigate, Route, Routes } from "react-router";
 import { NavTabStrip } from "./components/nav-tabs";
@@ -30,23 +31,29 @@ function App() {
     const appRuntime = useAppSelector(appRuntimeSelector);
     const hostingAddress = useAppSelector(hostingAddressSelector);
     const useLargeFont = useAppSelector((state) => state.core.useLargeFont);
+    const httpsOnlyFeaturesDisabled = useAppSelector(
+        httpsOnlyFeaturesDisabledSelector,
+    );
 
     useEffect(() => {
         // Initialize the worker when the app starts
         dispatch(coreThunks.initWorker());
-        dispatch(karaokeActions.initKaraoke())
+        dispatch(karaokeActions.initKaraoke());
 
         return () => {
             // Cleanup if necessary
             dispatch(coreThunks.stopCollectingPitches());
             dispatch(karaokeActions.cleanupKaraoke());
-        }
+        };
     }, []);
-
 
     return (
         <main className="container">
-            <div className={classNames("body-surround", { "large-font": useLargeFont })}>
+            <div
+                className={classNames("body-surround", {
+                    "large-font": useLargeFont,
+                })}
+            >
                 <Routes>
                     <Route path="/" element={<Navigate to="/karaoke" />} />
                     <Route path="" element={<NavTabStrip />}>
@@ -76,25 +83,25 @@ function App() {
                                             onClick={async () => {
                                                 if (!activeAudioDevice) {
                                                     console.log(
-                                                        "Starting audio processing"
+                                                        "Starting audio processing",
                                                     );
                                                     await dispatch(
-                                                        coreThunks.initAudioDevice()
+                                                        coreThunks.initAudioDevice(),
                                                     );
                                                     await dispatch(
                                                         coreThunks.setPitchDetectionAlgorithm(
-                                                            "autocorrelation"
-                                                        )
+                                                            "autocorrelation",
+                                                        ),
                                                     );
                                                     await dispatch(
-                                                        coreThunks.collectPitches()
+                                                        coreThunks.collectPitches(),
                                                     );
                                                 } else {
                                                     console.log(
-                                                        "Stopping audio processing"
+                                                        "Stopping audio processing",
                                                     );
                                                     await dispatch(
-                                                        coreThunks.stopCollectingPitches()
+                                                        coreThunks.stopCollectingPitches(),
                                                     );
                                                 }
                                             }}
@@ -104,6 +111,11 @@ function App() {
                                                 : "Start"}
                                         </Button>
                                     </div>
+                                    {httpsOnlyFeaturesDisabled && (
+                                        <Callout intent="warning">
+                                            {httpsOnlyFeaturesDisabled}
+                                        </Callout>
+                                    )}
                                     <div className="body">
                                         {/* <div>{JSON.stringify(currentPitch, null, 2)}</div> */}
                                         <div className="display-container">
@@ -133,7 +145,9 @@ function App() {
                 </Routes>
             </div>
             <div className="footer">
-                <div>{hostingAddress} (Runtime: {appRuntime})</div>
+                <div>
+                    {hostingAddress} (Runtime: {appRuntime})
+                </div>
             </div>
         </main>
     );
