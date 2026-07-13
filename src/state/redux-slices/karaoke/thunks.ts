@@ -290,12 +290,13 @@ export const karaokeThunks = {
                 throw new Error("Yjs document not initialized");
             }
             const songQueue = doc.getArray<SongInfo>("song-queue");
-            if (songQueue.length <= 2) {
-                return;
-            }
-            const tail = balancedShuffle(songQueue.toArray().slice(1));
             doc.transact(() => {
-                songQueue.delete(1, tail.length);
+                const current = songQueue.toArray();
+                if (current.length <= 2) {
+                    return;
+                }
+                const tail = balancedShuffle(current.slice(1));
+                songQueue.delete(1, current.length - 1);
                 songQueue.insert(1, tail);
             });
         },
